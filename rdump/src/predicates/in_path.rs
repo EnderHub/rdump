@@ -18,11 +18,13 @@ impl PredicateEvaluator for InPathEvaluator {
         // Check for glob metacharacters to switch between logic paths.
         if value.contains('*') || value.contains('?') || value.contains('[') || value.contains('{')
         {
-            // --- Wildcard Logic ---
             let glob = Glob::new(value)?.compile_matcher();
+            let relative_path = context.path.strip_prefix(&context.root).unwrap_or(&context.path);
+            if glob.is_match(relative_path) {
+                return Ok(MatchResult::Boolean(true));
+            }
 
             if let Some(parent) = context.path.parent() {
-                // Strip the root from the parent path to make the match relative.
                 let relative_parent = parent.strip_prefix(&context.root).unwrap_or(parent);
                 Ok(MatchResult::Boolean(glob.is_match(relative_parent)))
             } else {
@@ -316,6 +318,46 @@ mod tests {
         // Test non-matching wildcard
         assert!(!evaluator
             .evaluate(&mut ctx_api, &PredicateKey::In, "dist/*")?
+            .is_match());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_in_path_evaluator_user_scenario() -> Result<()> {
+        let evaluator = InPathEvaluator;
+        let root_dir = tempdir()?;
+        let root_path = root_dir.path();
+
+        // Structure:
+        //  /libs/feature/dependency-tracer/src/index.js
+        //  /libs/feature/other/component.js
+        let tracer_src = root_path.join("libs").join("feature").join("dependency-tracer").join("src");
+        let other_src = root_path.join("libs").join("feature").join("other");
+        fs::create_dir_all(&tracer_src)?;
+        fs::create_dir_all(&other_src)?;
+
+        let file_in_tracer = tracer_src.join("index.js");
+        fs::write(&file_in_tracer, "")?;
+        let file_in_other = other_src.join("component.js");
+        fs::write(&file_in_other, "")?;
+
+        let mut ctx_tracer = FileContext::new(file_in_tracer, root_path.to_path_buf());
+        let mut ctx_other = FileContext::new(file_in_other, root_path.to_path_buf());
+
+        // This should match the file inside dependency-tracer/src
+        assert!(evaluator
+            .evaluate(&mut ctx_tracer, &PredicateKey::In, "libs/**/dependency-tracer/**")?
+            .is_match());
+        
+        // This should also match, as the file is within a directory that matches the glob.
+        assert!(evaluator
+            .evaluate(&mut ctx_tracer, &PredicateKey::In, "libs/**/dependency-tracer/*")?
+            .is_match());
+
+        // This should not match the other file.
+        assert!(!evaluator
+            .evaluate(&mut ctx_other, &PredicateKey::In, "libs/**/dependency-tracer/**")?
             .is_match());
 
         Ok(())

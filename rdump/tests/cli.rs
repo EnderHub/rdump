@@ -56,7 +56,7 @@ fn test_version_message() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("--version");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("rdump 0.1.0")); // Assumes version in Cargo.toml
+        .stdout(predicate::str::contains("rdump 0.1.4")); // Assumes version in Cargo.toml
     Ok(())
 }
 
