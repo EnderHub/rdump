@@ -38,8 +38,9 @@ impl FileContext {
 
     pub fn get_content(&mut self) -> Result<&str> {
         if self.content.is_none() {
-            let content = fs::read_to_string(&self.path)
+            let bytes = fs::read(&self.path)
                 .with_context(|| format!("Failed to read file {}", self.path.display()))?;
+            let content = String::from_utf8_lossy(&bytes).into_owned();
             self.content = Some(content);
         }
         Ok(self.content.as_ref().unwrap())

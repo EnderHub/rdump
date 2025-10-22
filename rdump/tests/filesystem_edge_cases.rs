@@ -48,9 +48,9 @@ fn test_search_handles_invalid_utf8_file_gracefully() {
     // This query forces the tool to read the file content.
     cmd.arg("search").arg("contains:any");
 
-    // The tool should not panic. It should report an error and exit.
+    // The tool should complete without treating invalid UTF-8 as a hard error.
     cmd.assert()
-        .failure()
+        .success()
         .stdout(predicate::str::is_empty())
-        .stderr(predicate::str::contains("Error evaluating file"));
+        .stderr(predicate::str::is_empty());
 }

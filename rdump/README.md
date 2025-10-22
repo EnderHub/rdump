@@ -302,7 +302,7 @@ cargo build --release
 ### Core Concepts & Syntax
 
 -   **Predicates:** The building block of RQL is the `key:value` pair (e.g., `ext:rs`).
--   **Operators:** Combine predicates with `&` (AND), `|` (OR).
+-   **Operators:** Combine predicates with `&` (AND), `|` (OR). Precedence is `!` > `&` > `|`, so wrap groups in parentheses when in doubt.
 -   **Negation:** `!` negates a predicate or group (e.g., `!ext:md`).
 -   **Grouping:** `()` controls the order of operations (e.g., `ext:rs & (contains:foo | contains:bar)`).
 -   **Quoting:** Use `'` or `"` for values with spaces or special characters (e.g., `contains:'fn main()'`).
@@ -396,6 +396,11 @@ These are `rdump`'s most powerful feature. They parse the code with `tree-sitter
     ```sh
     # Find JS or TS files that either import React or define a 'Component' class
     rdump "(ext:js | ext:ts) & (import:react | class:Component)"
+    ```
+
+-   **Filtering OR Groups:** Because `&` binds tighter than `|`, wrap OR chains in parentheses before applying a shared filter.  
+    ```sh
+    rdump "(in:src/frontend/**/* | in:src/backend/**/* ) & !ext:ico"
     ```
 
 

@@ -7,7 +7,7 @@ use std::io::Write;
 use std::ops::Range as StdRange;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt; // For Unix permissions
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
@@ -27,6 +27,12 @@ struct FileOutput {
     content: String,
 }
 
+fn read_file_content(path: &Path) -> Result<String> {
+    let bytes = fs::read(path)
+        .with_context(|| format!("Failed to read file {}", path.display()))?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 fn print_markdown_format(
     writer: &mut impl Write,
     matching_files: &[(PathBuf, Vec<Range>)],
@@ -43,7 +49,7 @@ fn print_markdown_format(
             writeln!(writer, "File: {}", path.display())?;
             writeln!(writer, "---")?;
         }
-        let content = fs::read_to_string(path)?;
+        let content = read_file_content(path)?;
         let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         // Markdown format should always use fenced content, not ANSI colors.
@@ -59,7 +65,7 @@ fn print_cat_format(
     use_color: bool,
 ) -> Result<()> {
     for (path, _) in matching_files {
-        let content = fs::read_to_string(path)?;
+        let content = read_file_content(path)?;
         if use_color {
             // To terminal
             print_highlighted_content(
@@ -82,7 +88,7 @@ fn print_json_format(
 ) -> Result<()> {
     let mut outputs = Vec::new();
     for (path, _) in matching_files {
-        let content = fs::read_to_string(path)
+        let content = read_file_content(path)
             .with_context(|| format!("Failed to read file for final output: {}", path.display()))?;
         outputs.push(FileOutput {
             path: path.to_string_lossy().to_string(),
@@ -156,7 +162,7 @@ fn print_hunks_format(
             writeln!(writer, "File: {}", path.display())?;
             writeln!(writer, "---")?;
         }
-        let content = fs::read_to_string(path)?;
+        let content = read_file_content(path)?;
         let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         if hunks.is_empty() {
