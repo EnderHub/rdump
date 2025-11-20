@@ -136,9 +136,50 @@ function_query = "(function_item name: (identifier) @name)"
 
 ---
 
+### 8. Library API
+
+**Problem:** rdump can only be used as a CLI tool. Cannot embed search functionality in other Rust programs.
+
+**Current limitations:**
+- `run_search()` prints to stdout, doesn't return results
+- No way to get `Vec<SearchResult>` programmatically
+- Args struct is CLI-coupled (color choice, output path, etc.)
+
+**Solution:** Separate query execution from output formatting.
+
+```rust
+// Proposed library API
+use rdump::{search, SearchOptions, SearchResult};
+
+let results: Vec<SearchResult> = search(
+    "ext:rs & func:main",
+    Path::new("."),
+    SearchOptions::default(),
+)?;
+
+for result in results {
+    println!("{}: {} matches", result.path.display(), result.matches.len());
+    // Access result.content, result.ranges, etc.
+}
+```
+
+**Implementation:**
+1. Create `SearchResult` struct with path, matches, content
+2. Refactor `run_search` to call `search()` then format output
+3. Export clean public API without CLI concerns
+4. Consider streaming iterator for large result sets
+
+**Use cases:**
+- Embed in IDE plugins
+- Build custom tooling on top of rdump
+- Integration with CI/CD pipelines
+- Use in test harnesses
+
+---
+
 ## Low Priority
 
-### 8. Interactive Mode (TUI)
+### 9. Interactive Mode (TUI)
 
 **Problem:** Iterating on queries requires re-running commands.
 
@@ -150,7 +191,7 @@ rdump --interactive
 
 ---
 
-### 9. Language Server Protocol (LSP) Integration
+### 10. Language Server Protocol (LSP) Integration
 
 **Problem:** IDE users can't easily use rdump queries.
 
@@ -158,7 +199,7 @@ rdump --interactive
 
 ---
 
-### 10. Custom Predicate Plugins
+### 11. Custom Predicate Plugins
 
 **Problem:** Users need domain-specific predicates not built into rdump.
 
@@ -170,7 +211,7 @@ rdump --plugin=./my_predicate.wasm "ext:rs & my_check:foo"
 
 ---
 
-### 11. Diff Mode
+### 12. Diff Mode
 
 **Problem:** Can't easily see what changed between two query runs.
 
@@ -183,7 +224,7 @@ rdump "ext:rs & func:." --since="2024-01-01"
 
 ---
 
-### 12. Export Formats
+### 13. Export Formats
 
 **Problem:** Limited integration with other tools.
 
@@ -203,6 +244,49 @@ rdump "ext:rs & func:." --since="2024-01-01"
 - [x] Parallel file processing
 - [x] Gitignore support
 - [x] Context lines for hunks
+
+---
+
+## Version Roadmap
+
+### v0.2.0 - Enhanced Usability
+
+- Interactive mode with REPL, history, tab completion (see #9)
+- Query builder wizard for guided construction
+- Result caching with mtime invalidation (see #3)
+- Extended output formats: XML, CSV, custom templates (see #13)
+
+### v0.3.0 - Language Expansion
+
+- New languages: C/C++, Ruby, PHP, Swift, Kotlin
+- New predicates: `docstring:`, `decorator:`, `literal:`, `operator:`
+- Cross-language analysis with `polyglot:` predicate
+- Improved language detection
+
+### v0.4.0 - Analysis Features
+
+- Dependency analysis: `depends:`, `dependents:`
+- Code metrics: `complexity:>10`, `lines:>100`, `depth:>5`
+- Pattern detection: `pattern:singleton`, `antipattern:godclass`
+
+### v1.0.0 - Production Ready
+
+- Stable CLI and query language (semantic versioning)
+- Enterprise features: config profiles, audit logging
+- Performance targets: 100K files < 5s, memory < 500MB, startup < 100ms
+
+### Long-Term Vision
+
+- IDE integration (VS Code, JetBrains, Neovim, Emacs)
+- Cloud/remote: GitHub/GitLab search, distributed repos
+- AI integration: natural language queries, query suggestions
+
+### Not Planned
+
+- File modification (read-only by design)
+- Real-time watching (use watchman/fswatch + rdump)
+- GUI (CLI-first, IDE plugins instead)
+- Network search (local filesystem only)
 
 ---
 

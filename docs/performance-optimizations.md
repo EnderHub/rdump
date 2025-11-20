@@ -329,6 +329,72 @@ fn parse_file(content: &str, language: Language) -> Option<Tree> {
 
 ---
 
+### 9. Handle Very Large Files (>100MB)
+
+**Location:** `src/evaluator.rs`
+
+**Problem:** Files over 100MB are read entirely into memory via `fs::read()`. This causes:
+- High memory pressure (multiple large files in parallel = OOM risk)
+- Slow initial load time
+- Tree-sitter must parse entire file regardless
+
+**Current behavior:**
+```rust
+// evaluator.rs:41 - reads entire file into memory
+let bytes = fs::read(&self.path)?;
+```
+
+**Solution options:**
+
+1. **Skip by default, opt-in flag:**
+```rust
+const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024; // 100MB
+
+if metadata.len() > MAX_FILE_SIZE {
+    if !args.include_large_files {
+        return Ok(false); // Skip file
+    }
+    warn!("Processing large file: {} ({}MB)", path, metadata.len() / 1_000_000);
+}
+```
+
+2. **Streaming for content predicates (contains/matches):**
+```rust
+// For contains: predicate on very large files
+fn streaming_contains(path: &Path, needle: &str) -> Result<bool> {
+    let file = File::open(path)?;
+    let reader = BufReader::with_capacity(64 * 1024, file);
+
+    // Use memchr or aho-corasick for streaming search
+    // Note: Can't use tree-sitter with streaming
+}
+```
+
+3. **Sampling for code-aware predicates:**
+```rust
+// Parse only first N bytes for structure detection
+const SAMPLE_SIZE: usize = 1_000_000; // 1MB sample
+
+fn sample_parse(path: &Path) -> Result<Option<Tree>> {
+    let mut file = File::open(path)?;
+    let mut buffer = vec![0u8; SAMPLE_SIZE];
+    let bytes_read = file.read(&mut buffer)?;
+    // Parse sample - may miss definitions later in file
+}
+```
+
+**Recommended approach:** Option 1 (skip by default) is safest. Most 100MB+ files are:
+- Generated code (node_modules, vendor)
+- Binary files misidentified
+- Data files (logs, dumps)
+
+Add `--include-large-files` flag and `size:<100mb` predicate guidance.
+
+**Impact:** Prevents OOM, faster scans on repos with large files
+**Effort:** Low (1 hour) for skip approach, Medium (3-4 hours) for streaming
+
+---
+
 ## What's Already Optimal
 
 - **Two-pass filtering** - metadata checks before content reading

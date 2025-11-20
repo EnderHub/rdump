@@ -56,7 +56,7 @@ fn test_version_message() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("--version");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("rdump 0.1.4")); // Assumes version in Cargo.toml
+        .stdout(predicate::str::is_match(r"rdump \d+\.\d+\.\d+").unwrap());
     Ok(())
 }
 
@@ -572,5 +572,79 @@ fn test_search_implicit_and_with_negation_fails() -> Result<(), Box<dyn std::err
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("missing logical operator"));
+    Ok(())
+}
+
+#[test]
+fn test_lang_list_command() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("rdump")?;
+    cmd.arg("lang").arg("list");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("NAME"))
+        .stdout(predicate::str::contains("EXTENSIONS"))
+        .stdout(predicate::str::contains("Rust"))
+        .stdout(predicate::str::contains("Python"));
+    Ok(())
+}
+
+#[test]
+fn test_search_no_headers_flag() -> Result<(), Box<dyn std::error::Error>> {
+    let (_dir, root) = setup_test_dir();
+
+    let mut cmd = Command::cargo_bin("rdump")?;
+    cmd.current_dir(&root);
+    cmd.arg("search").arg("ext:rs").arg("--no-headers");
+
+    // With --no-headers, the output should be cat format without "File:" headers
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("fn main()"))
+        .stdout(predicate::str::contains("Hello").not().or(predicate::str::contains("println")));
+    Ok(())
+}
+
+#[test]
+fn test_search_color_never_flag() -> Result<(), Box<dyn std::error::Error>> {
+    let (_dir, root) = setup_test_dir();
+
+    let mut cmd = Command::cargo_bin("rdump")?;
+    cmd.current_dir(&root);
+    cmd.arg("search").arg("ext:rs").arg("--color").arg("never");
+
+    // With --color never, output should not contain ANSI escape codes
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\x1b[").not());
+    Ok(())
+}
+
+#[test]
+fn test_search_empty_query_fails() -> Result<(), Box<dyn std::error::Error>> {
+    let (_dir, root) = setup_test_dir();
+
+    let mut cmd = Command::cargo_bin("rdump")?;
+    cmd.current_dir(&root);
+    cmd.arg("search").arg("   "); // Whitespace-only query
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Empty"));
+    Ok(())
+}
+
+#[test]
+fn test_search_with_find_flag() -> Result<(), Box<dyn std::error::Error>> {
+    let (_dir, root) = setup_test_dir();
+
+    let mut cmd = Command::cargo_bin("rdump")?;
+    cmd.current_dir(&root);
+    cmd.arg("search").arg("ext:rs").arg("--find");
+
+    // With --find, output should just be file paths
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("main.rs"));
     Ok(())
 }

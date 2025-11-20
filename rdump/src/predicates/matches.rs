@@ -2,8 +2,10 @@ use super::PredicateEvaluator;
 use crate::evaluator::{FileContext, MatchResult};
 use crate::parser::PredicateKey;
 use anyhow::Result;
-use regex::Regex;
+use std::time::Instant;
+use regex::RegexBuilder;
 use tree_sitter::Range;
+use crate::limits::MAX_REGEX_EVAL_DURATION;
 
 pub(super) struct MatchesEvaluator;
 impl PredicateEvaluator for MatchesEvaluator {
@@ -14,10 +16,16 @@ impl PredicateEvaluator for MatchesEvaluator {
         value: &str,
     ) -> Result<MatchResult> {
         let content = context.get_content()?;
-        let re = Regex::new(value)?;
+        let re = RegexBuilder::new(value)
+            .size_limit(10 * 1024 * 1024) // Cap regex state to avoid pathological patterns
+            .build()?;
 
         let mut ranges = Vec::new();
+        let start = Instant::now();
         for (i, line) in content.lines().enumerate() {
+            if i % 100 == 0 && start.elapsed() > MAX_REGEX_EVAL_DURATION {
+                anyhow::bail!("Regex evaluation timed out");
+            }
             if re.is_match(line) {
                 let start_byte = content.lines().take(i).map(|l| l.len() + 1).sum();
                 let end_byte = start_byte + line.len();

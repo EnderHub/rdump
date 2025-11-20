@@ -1,0 +1,21 @@
+// File with many small functions
+fn func1() {}
+fn func2() {}
+fn func3() {}
+fn func4() {}
+fn func5() {}
+fn func6() {}
+fn func7() {}
+fn func8() {}
+fn func9() {}
+fn func10() {}
+fn func11() {}
+fn func12() {}
+fn func13() {}
+fn func14() {}
+fn func15() {}
+fn func16() {}
+fn func17() {}
+fn func18() {}
+fn func19() {}
+fn func20() {}

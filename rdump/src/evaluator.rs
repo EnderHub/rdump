@@ -6,6 +6,7 @@ use tree_sitter::{Parser, Range, Tree};
 
 use crate::parser::{AstNode, LogicalOperator, PredicateKey};
 use crate::predicates::PredicateEvaluator;
+use crate::limits::{is_probably_binary, maybe_contains_secret, MAX_FILE_SIZE};
 
 /// The result of an evaluation for a single file.
 #[derive(Debug, Clone)]
@@ -22,25 +23,62 @@ pub struct FileContext {
     pub path: PathBuf,
     pub root: PathBuf,
     content: Option<String>,
+    /// Tracks whether the file was skipped due to size/binary detection.
+    _skipped_content: bool,
     // Cache for the parsed tree-sitter AST
     tree: Option<Tree>,
 }
 
 impl FileContext {
     pub fn new(path: PathBuf, root: PathBuf) -> Self {
+        let canonical_root = dunce::canonicalize(&root).unwrap_or(root);
+        let canonical_path = dunce::canonicalize(&path).unwrap_or(path);
         FileContext {
-            path,
-            root,
+            path: canonical_path,
+            root: canonical_root,
             content: None,
+            _skipped_content: false,
             tree: None,
         }
     }
 
     pub fn get_content(&mut self) -> Result<&str> {
         if self.content.is_none() {
+            let metadata = fs::metadata(&self.path)
+                .with_context(|| format!("Failed to stat file {}", self.path.display()))?;
+
+            if metadata.len() > MAX_FILE_SIZE {
+                eprintln!(
+                    "Skipping {} (exceeds max file size of {} bytes)",
+                    self.path.display(),
+                    MAX_FILE_SIZE
+                );
+                self._skipped_content = true;
+                self.content = Some(String::new());
+                return Ok(self.content.as_ref().unwrap());
+            }
+
             let bytes = fs::read(&self.path)
                 .with_context(|| format!("Failed to read file {}", self.path.display()))?;
+
+            if is_probably_binary(&bytes) {
+                eprintln!("Skipping binary file {}", self.path.display());
+                self._skipped_content = true;
+                self.content = Some(String::new());
+                return Ok(self.content.as_ref().unwrap());
+            }
+
             let content = String::from_utf8_lossy(&bytes).into_owned();
+
+            if maybe_contains_secret(&content) {
+                eprintln!(
+                    "Skipping possible secret-containing file {}",
+                    self.path.display()
+                );
+                self._skipped_content = true;
+                self.content = Some(String::new());
+                return Ok(self.content.as_ref().unwrap());
+            }
             self.content = Some(content);
         }
         Ok(self.content.as_ref().unwrap())

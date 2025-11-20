@@ -3,6 +3,7 @@ pub mod commands;
 pub mod config;
 pub mod evaluator;
 pub mod formatter;
+pub mod limits;
 pub mod parser;
 pub mod predicates;
 

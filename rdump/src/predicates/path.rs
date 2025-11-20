@@ -31,16 +31,44 @@ impl PredicateEvaluator for PathEvaluator {
             ));
         }
 
-        let path_str = context.path.to_string_lossy();
+        let relative_path = context
+            .path
+            .strip_prefix(&context.root)
+            .map(|p| p.to_path_buf())
+            .or_else(|_| {
+                let canonical_root =
+                    dunce::canonicalize(&context.root).unwrap_or_else(|_| context.root.clone());
+                let canonical_path =
+                    dunce::canonicalize(&context.path).unwrap_or_else(|_| context.path.clone());
+                canonical_path
+                    .strip_prefix(&canonical_root)
+                    .map(|p| p.to_path_buf())
+            })
+            .unwrap_or_else(|_| context.path.clone());
+
+        let path_str = relative_path.to_string_lossy();
+        let absolute_path_str = context.path.to_string_lossy();
+        let value_path = std::path::Path::new(value);
+        let use_absolute = value_path.is_absolute();
 
         if value.contains('*') || value.contains('?') || value.contains('[') || value.contains('{')
         {
             // Convert glob-style pattern to a regex
             let glob = Glob::new(value)?.compile_matcher();
-            Ok(MatchResult::Boolean(glob.is_match(path_str.as_ref())))
+            let target = if use_absolute {
+                absolute_path_str.as_ref()
+            } else {
+                path_str.as_ref()
+            };
+            Ok(MatchResult::Boolean(glob.is_match(target)))
         } else {
             // Fallback to simple substring search for non-glob patterns
-            Ok(MatchResult::Boolean(path_str.contains(value)))
+            let target = if use_absolute {
+                absolute_path_str.as_ref()
+            } else {
+                path_str.as_ref()
+            };
+            Ok(MatchResult::Boolean(target.contains(value)))
         }
     }
 }

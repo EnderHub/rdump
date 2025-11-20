@@ -16,6 +16,7 @@ use tree_sitter::Range;
 
 // We need to pass the format enum from main.rs
 use crate::Format;
+use crate::limits::{is_probably_binary, maybe_contains_secret, MAX_FILE_SIZE};
 
 // Lazily load syntax and theme sets once.
 static SYNTAX_SET: Lazy<SyntaxSet> = Lazy::new(SyntaxSet::load_defaults_newlines);
@@ -27,10 +28,37 @@ struct FileOutput {
     content: String,
 }
 
-fn read_file_content(path: &Path) -> Result<String> {
-    let bytes =
-        fs::read(path).with_context(|| format!("Failed to read file {}", path.display()))?;
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
+fn read_file_content(path: &Path) -> Result<Option<String>> {
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
+
+    if metadata.len() > MAX_FILE_SIZE {
+        eprintln!(
+            "Skipping {} (exceeds max file size of {} bytes)",
+            path.display(),
+            MAX_FILE_SIZE
+        );
+        return Ok(None);
+    }
+
+    let bytes = fs::read(path).with_context(|| format!("Failed to read file {}", path.display()))?;
+
+    if is_probably_binary(&bytes) {
+        eprintln!("Skipping binary file {}", path.display());
+        return Ok(None);
+    }
+
+    let content = String::from_utf8_lossy(&bytes).into_owned();
+
+    if maybe_contains_secret(&content) {
+        eprintln!(
+            "Skipping possible secret-containing file {}",
+            path.display()
+        );
+        return Ok(None);
+    }
+
+    Ok(Some(content))
 }
 
 fn print_markdown_format(
@@ -52,7 +80,9 @@ fn print_markdown_format(
             writeln!(writer, "File: {}", path.display())?;
             writeln!(writer, "---")?;
         }
-        let content = read_file_content(path)?;
+        let Some(content) = read_file_content(path)? else {
+            continue;
+        };
         let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         // Markdown format should always use fenced content, not ANSI colors.
@@ -68,7 +98,9 @@ fn print_cat_format(
     use_color: bool,
 ) -> Result<()> {
     for (path, _) in matching_files {
-        let content = read_file_content(path)?;
+        let Some(content) = read_file_content(path)? else {
+            continue;
+        };
         if use_color {
             // To terminal
             print_highlighted_content(
@@ -91,8 +123,11 @@ fn print_json_format(
 ) -> Result<()> {
     let mut outputs = Vec::new();
     for (path, _) in matching_files {
-        let content = read_file_content(path)
-            .with_context(|| format!("Failed to read file for final output: {}", path.display()))?;
+        let Some(content) = read_file_content(path)
+            .with_context(|| format!("Failed to read file for final output: {}", path.display()))?
+        else {
+            continue;
+        };
         outputs.push(FileOutput {
             path: path.to_string_lossy().to_string(),
             content,
@@ -165,7 +200,9 @@ fn print_hunks_format(
             writeln!(writer, "File: {}", path.display())?;
             writeln!(writer, "---")?;
         }
-        let content = read_file_content(path)?;
+        let Some(content) = read_file_content(path)? else {
+            continue;
+        };
         let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         if hunks.is_empty() {
@@ -515,5 +552,100 @@ mod tests {
         let output = String::from_utf8(writer).unwrap();
         assert!(output.contains("B")); // Size
         assert!(output.contains(&file.path().display().to_string()));
+    }
+
+    #[test]
+    fn test_format_size_all_ranges() {
+        // Test bytes
+        assert_eq!(super::format_size(500), "500B");
+
+        // Test kilobytes (lines 386-388)
+        assert_eq!(super::format_size(1024), "1.0K");
+        assert_eq!(super::format_size(1536), "1.5K");
+
+        // Test megabytes (lines 384-386)
+        assert_eq!(super::format_size(1024 * 1024), "1.0M");
+        assert_eq!(super::format_size(2 * 1024 * 1024), "2.0M");
+
+        // Test gigabytes (lines 382-384)
+        assert_eq!(super::format_size(1024 * 1024 * 1024), "1.0G");
+        assert_eq!(super::format_size(3 * 1024 * 1024 * 1024), "3.0G");
+    }
+
+    #[test]
+    fn test_format_markdown_multiple_files_with_separators() {
+        // This tests lines 44-51 (the separator between multiple files)
+        let file1 = create_temp_file_with_content("content 1");
+        let file2 = create_temp_file_with_content("content 2");
+        let paths = vec![
+            (file1.path().to_path_buf(), vec![]),
+            (file2.path().to_path_buf(), vec![]),
+        ];
+        let mut writer = Vec::new();
+        print_output(
+            &mut writer,
+            &paths,
+            &Format::Markdown,
+            false,
+            false,
+            false,
+            0,
+        )
+        .unwrap();
+        let output = String::from_utf8(writer).unwrap();
+
+        // Should contain content from both files and File: headers
+        assert!(output.contains("content 1"));
+        assert!(output.contains("content 2"));
+        assert!(output.contains("File:"));
+    }
+
+    #[test]
+    fn test_format_cat_with_ansi_and_line_numbers() {
+        // This tests line 309 (ANSI output with line numbers)
+        let file = create_temp_file_with_content("fn main() {}\nlet x = 1;");
+        let rs_path = file.path().with_extension("rs");
+        std::fs::rename(file.path(), &rs_path).unwrap();
+
+        let paths = vec![(rs_path, vec![])];
+        let mut writer = Vec::new();
+        print_output(
+            &mut writer,
+            &paths,
+            &Format::Cat,
+            true,  // with_line_numbers
+            false,
+            true,  // use_color (ANSI)
+            0,
+        )
+        .unwrap();
+        let output = String::from_utf8(writer).unwrap();
+
+        // Should contain line numbers and ANSI codes
+        assert!(output.contains(" | "), "Should contain line number separator");
+        assert!(output.contains("\x1b["), "Should contain ANSI escape codes");
+    }
+
+    #[test]
+    fn test_get_contextual_line_ranges_empty_hunks() {
+        // This tests line 258 (empty hunks case)
+        let lines: Vec<&str> = vec!["line 1", "line 2", "line 3"];
+        let hunks: Vec<tree_sitter::Range> = vec![];
+        let result = super::get_contextual_line_ranges(&hunks, &lines, 1);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_get_contextual_line_ranges_empty_lines() {
+        // This tests line 257-258 (empty lines case)
+        let lines: Vec<&str> = vec![];
+        let hunks = vec![tree_sitter::Range {
+            start_byte: 0,
+            end_byte: 10,
+            start_point: tree_sitter::Point { row: 0, column: 0 },
+            end_point: tree_sitter::Point { row: 0, column: 10 },
+        }];
+        let result = super::get_contextual_line_ranges(&hunks, &lines, 1);
+        assert!(result.is_empty());
     }
 }

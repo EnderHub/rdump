@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Read(//private/tmp/**)"
+      "Read(//private/tmp/**)",
+      "Bash(cat:*)",
+      "Bash(git checkout:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo tarpaulin:*)"
     ],
     "deny": [],
     "ask": []

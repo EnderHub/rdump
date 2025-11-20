@@ -500,4 +500,172 @@ mod tests {
             *predicate(PredicateKey::Other("unknown".to_string()), "predicate")
         );
     }
+
+    #[test]
+    fn test_parse_all_metadata_predicates() {
+        // Test all metadata predicates to exercise PredicateKey::from and as_ref
+        assert_eq!(
+            parse_query("path_exact:/foo/bar").unwrap(),
+            *predicate(PredicateKey::PathExact, "/foo/bar")
+        );
+        assert_eq!(
+            parse_query("contains:TODO").unwrap(),
+            *predicate(PredicateKey::Contains, "TODO")
+        );
+        assert_eq!(
+            parse_query("matches:^test_").unwrap(),
+            *predicate(PredicateKey::Matches, "^test_")
+        );
+        assert_eq!(
+            parse_query("size:>1000").unwrap(),
+            *predicate(PredicateKey::Size, ">1000")
+        );
+        assert_eq!(
+            parse_query("modified:<1d").unwrap(),
+            *predicate(PredicateKey::Modified, "<1d")
+        );
+        assert_eq!(
+            parse_query("in:src/").unwrap(),
+            *predicate(PredicateKey::In, "src/")
+        );
+    }
+
+    #[test]
+    fn test_parse_all_semantic_predicates() {
+        // Test all semantic predicates
+        assert_eq!(
+            parse_query("enum:Status").unwrap(),
+            *predicate(PredicateKey::Enum, "Status")
+        );
+        assert_eq!(
+            parse_query("interface:IUser").unwrap(),
+            *predicate(PredicateKey::Interface, "IUser")
+        );
+        assert_eq!(
+            parse_query("trait:Display").unwrap(),
+            *predicate(PredicateKey::Trait, "Display")
+        );
+        assert_eq!(
+            parse_query("type:UserId").unwrap(),
+            *predicate(PredicateKey::Type, "UserId")
+        );
+    }
+
+    #[test]
+    fn test_parse_all_react_predicates() {
+        // Test all React-specific predicates
+        assert_eq!(
+            parse_query("element:div").unwrap(),
+            *predicate(PredicateKey::Element, "div")
+        );
+        assert_eq!(
+            parse_query("customhook:useAuth").unwrap(),
+            *predicate(PredicateKey::CustomHook, "useAuth")
+        );
+        assert_eq!(
+            parse_query("prop:onClick").unwrap(),
+            *predicate(PredicateKey::Prop, "onClick")
+        );
+    }
+
+    #[test]
+    fn test_predicate_key_as_ref() {
+        // Directly test as_ref() for all PredicateKey variants
+        assert_eq!(PredicateKey::Ext.as_ref(), "ext");
+        assert_eq!(PredicateKey::Name.as_ref(), "name");
+        assert_eq!(PredicateKey::Path.as_ref(), "path");
+        assert_eq!(PredicateKey::PathExact.as_ref(), "path_exact");
+        assert_eq!(PredicateKey::Contains.as_ref(), "contains");
+        assert_eq!(PredicateKey::Matches.as_ref(), "matches");
+        assert_eq!(PredicateKey::Size.as_ref(), "size");
+        assert_eq!(PredicateKey::Modified.as_ref(), "modified");
+        assert_eq!(PredicateKey::In.as_ref(), "in");
+        assert_eq!(PredicateKey::Def.as_ref(), "def");
+        assert_eq!(PredicateKey::Func.as_ref(), "func");
+        assert_eq!(PredicateKey::Import.as_ref(), "import");
+        assert_eq!(PredicateKey::Class.as_ref(), "class");
+        assert_eq!(PredicateKey::Struct.as_ref(), "struct");
+        assert_eq!(PredicateKey::Enum.as_ref(), "enum");
+        assert_eq!(PredicateKey::Interface.as_ref(), "interface");
+        assert_eq!(PredicateKey::Trait.as_ref(), "trait");
+        assert_eq!(PredicateKey::Type.as_ref(), "type");
+        assert_eq!(PredicateKey::Impl.as_ref(), "impl");
+        assert_eq!(PredicateKey::Macro.as_ref(), "macro");
+        assert_eq!(PredicateKey::Comment.as_ref(), "comment");
+        assert_eq!(PredicateKey::Str.as_ref(), "str");
+        assert_eq!(PredicateKey::Call.as_ref(), "call");
+        assert_eq!(PredicateKey::Component.as_ref(), "component");
+        assert_eq!(PredicateKey::Element.as_ref(), "element");
+        assert_eq!(PredicateKey::Hook.as_ref(), "hook");
+        assert_eq!(PredicateKey::CustomHook.as_ref(), "customhook");
+        assert_eq!(PredicateKey::Prop.as_ref(), "prop");
+        assert_eq!(PredicateKey::Other("custom".to_string()).as_ref(), "custom");
+    }
+
+    #[test]
+    fn test_parse_deeply_nested_expression() {
+        // Test deeply nested parentheses
+        let ast = parse_query("((ext:rs))").unwrap();
+        assert_eq!(ast, *predicate(PredicateKey::Ext, "rs"));
+    }
+
+    #[test]
+    fn test_parse_multiple_negations() {
+        // Test double negation with parentheses
+        let ast = parse_query("!(!ext:rs)").unwrap();
+        assert_eq!(
+            ast,
+            AstNode::Not(Box::new(AstNode::Not(predicate(PredicateKey::Ext, "rs"))))
+        );
+    }
+
+    #[test]
+    fn test_parse_complex_nested_with_negation() {
+        // Complex query with nested groups and negations
+        let ast = parse_query("!(ext:rs | ext:py) & func:main").unwrap();
+        let inner_or = AstNode::LogicalOp(
+            LogicalOperator::Or,
+            predicate(PredicateKey::Ext, "rs"),
+            predicate(PredicateKey::Ext, "py"),
+        );
+        let expected = AstNode::LogicalOp(
+            LogicalOperator::And,
+            Box::new(AstNode::Not(Box::new(inner_or))),
+            predicate(PredicateKey::Func, "main"),
+        );
+        assert_eq!(ast, expected);
+    }
+
+    #[test]
+    fn test_error_on_consecutive_predicates() {
+        // Missing operator between predicates
+        let result = parse_query("ext:rs name:foo");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_error_on_missing_closing_paren() {
+        let result = parse_query("(ext:rs | name:foo");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_error_on_empty_parentheses() {
+        let result = parse_query("()");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_value_with_colon() {
+        // Value containing a colon
+        let ast = parse_query("contains:\"key:value\"").unwrap();
+        assert_eq!(ast, *predicate(PredicateKey::Contains, "key:value"));
+    }
+
+    #[test]
+    fn test_parse_value_with_operators() {
+        // Value containing operator characters
+        let ast = parse_query("contains:\"a & b | c\"").unwrap();
+        assert_eq!(ast, *predicate(PredicateKey::Contains, "a & b | c"));
+    }
 }

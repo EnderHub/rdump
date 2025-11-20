@@ -1,6 +1,6 @@
+use crate::limits::{safe_canonicalize, DEFAULT_MAX_DEPTH};
 use crate::{config, ColorChoice, SearchArgs};
-use anyhow::anyhow;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -77,6 +77,13 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
     // --- Load Config and Build Query ---
     let config = config::load_config()?;
     let mut final_query: Option<String> = args.query.clone();
+    let display_root = args.root.clone();
+    let canonical_root = dunce::canonicalize(&args.root).map_err(|_| {
+        anyhow!(
+            "root path '{}' does not exist or is not accessible.",
+            args.root.display()
+        )
+    })?;
 
     // If presets are specified, prepend them to the query.
     if !args.preset.is_empty() {
@@ -107,7 +114,7 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
 
     // --- 1. Find initial candidates ---
     let candidate_files =
-        get_candidate_files(&args.root, args.no_ignore, args.hidden, args.max_depth)?;
+        get_candidate_files(&canonical_root, args.no_ignore, args.hidden, args.max_depth)?;
 
     // --- 2. Parse query ---
     let ast = parser::parse_query(&query_to_parse)?;
@@ -130,7 +137,7 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
             if first_error.lock().unwrap().is_some() {
                 return false;
             }
-            let mut context = FileContext::new(path.clone(), args.root.clone());
+            let mut context = FileContext::new(path.clone(), canonical_root.clone());
             match pre_filter_evaluator.evaluate(&mut context) {
                 Ok(result) => result.is_match(),
                 Err(e) => {
@@ -164,7 +171,7 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
             if first_error.lock().unwrap().is_some() {
                 return None;
             }
-            let mut context = FileContext::new(path.clone(), args.root.clone());
+            let mut context = FileContext::new(path.clone(), canonical_root.clone());
             match evaluator.evaluate(&mut context) {
                 Ok(MatchResult::Boolean(true)) => Some((path.clone(), Vec::new())),
                 Ok(MatchResult::Boolean(false)) => None,
@@ -193,6 +200,18 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
 
     matching_files.sort_by(|a, b| a.0.cmp(&b.0));
 
+    // Preserve a user-friendly display path while ensuring we only process validated, canonical paths.
+    let matching_files: Vec<(PathBuf, Vec<Range>)> = matching_files
+        .into_iter()
+        .map(|(path, hunks)| {
+            if let Ok(relative) = path.strip_prefix(&canonical_root) {
+                (display_root.join(relative), hunks)
+            } else {
+                (path, hunks)
+            }
+        })
+        .collect();
+
     Ok(matching_files)
 }
 
@@ -206,7 +225,11 @@ fn get_candidate_files(
     let mut files = Vec::new();
     let mut walker_builder = WalkBuilder::new(root);
 
-    walker_builder.hidden(!hidden).max_depth(max_depth);
+    let effective_max_depth = max_depth.unwrap_or(DEFAULT_MAX_DEPTH);
+    walker_builder
+        .hidden(!hidden)
+        .max_depth(Some(effective_max_depth))
+        .follow_links(true);
 
     if no_ignore {
         // If --no-ignore is passed, disable everything.
@@ -255,22 +278,21 @@ fn get_candidate_files(
         match result {
             Ok(entry) => {
                 if entry.file_type().is_some_and(|ft| ft.is_file()) {
-                    files.push(entry.into_path());
-                }
-            }
-            Err(e) => {
-                // If a path doesn't exist (e.g., bad root), this is a hard error.
-                if e.is_io() {
-                    if let Some(inner) = e.clone().into_io_error() {
-                        if inner.kind() == std::io::ErrorKind::NotFound {
-                            return Err(anyhow!(
-                                "root path '{}' does not exist or is not accessible.",
-                                root.display()
-                            ));
+                    let original_path = entry.into_path();
+                    match safe_canonicalize(&original_path, root) {
+                        Ok(canonical_path) => files.push(canonical_path),
+                        Err(e) => {
+                            eprintln!(
+                                "Skipping path outside root ({}): {}",
+                                e,
+                                original_path.display()
+                            );
                         }
                     }
                 }
-                // For other errors (e.g. permission denied on a sub-dir), just print a warning.
+            }
+            Err(e) => {
+                // Log and continue for walk errors (broken symlinks, permission issues, etc.).
                 eprintln!("Warning: could not access entry: {}", e);
             }
         }
@@ -321,10 +343,11 @@ mod tests {
     ) -> Vec<String> {
         let mut paths = get_candidate_files(root, no_ignore, hidden, max_depth).unwrap();
         paths.sort();
+        let canonical_root = dunce::canonicalize(root).unwrap();
         paths
             .into_iter()
             .map(|p| {
-                p.strip_prefix(root)
+                p.strip_prefix(&canonical_root)
                     .unwrap()
                     .to_string_lossy()
                     .replace('\\', "/")
