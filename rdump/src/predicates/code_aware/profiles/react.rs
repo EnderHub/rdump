@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 /// Creates the profile for the React (JSX/TSX).
 pub(super) fn create_react_profile() -> LanguageProfile {
-    let language = tree_sitter_typescript::language_tsx();
+    let language = tree_sitter_typescript::LANGUAGE_TSX.into();
     let mut queries = HashMap::new();
 
     // --- Component & Element Queries ---

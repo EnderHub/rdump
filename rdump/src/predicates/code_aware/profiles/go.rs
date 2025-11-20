@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 /// Creates the profile for the Go language.
 pub(super) fn create_go_profile() -> LanguageProfile {
-    let language = tree_sitter_go::language();
+    let language = tree_sitter_go::LANGUAGE.into();
     let mut queries = HashMap::new();
 
     let type_query = "(type_declaration (type_spec name: (type_identifier) @match))";

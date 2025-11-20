@@ -2,7 +2,7 @@ use crate::evaluator::{FileContext, MatchResult};
 use crate::parser::PredicateKey;
 use crate::predicates::PredicateEvaluator;
 use anyhow::{Context, Result};
-use tree_sitter::{Query, QueryCursor};
+use tree_sitter::{Query, QueryCursor, StreamingIterator};
 
 pub mod profiles;
 
@@ -56,9 +56,9 @@ impl PredicateEvaluator for CodeAwareEvaluator {
         let mut ranges = Vec::new();
 
         // 5. Execute the query and check for a match.
-        let captures = cursor.matches(&query, tree.root_node(), content.as_bytes());
+        let mut captures = cursor.matches(&query, tree.root_node(), content.as_bytes());
 
-        for m in captures {
+        while let Some(m) = captures.next() {
             for capture in m.captures {
                 // We only care about nodes captured with the name `@match`.
                 let capture_name = &query.capture_names()[capture.index as usize];

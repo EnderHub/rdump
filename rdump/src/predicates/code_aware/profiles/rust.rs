@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 /// Creates the profile for the Rust language.
 pub(super) fn create_rust_profile() -> LanguageProfile {
-    let language = tree_sitter_rust::language();
+    let language = tree_sitter_rust::LANGUAGE.into();
     let mut queries = HashMap::new();
 
     let struct_query = "(struct_item name: (_) @match)";

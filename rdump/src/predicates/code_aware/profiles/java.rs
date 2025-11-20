@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 /// Creates the profile for the Java language.
 pub(super) fn create_java_profile() -> LanguageProfile {
-    let language = tree_sitter_java::language();
+    let language = tree_sitter_java::LANGUAGE.into();
     let mut queries = HashMap::new();
 
     // --- Definitions ---

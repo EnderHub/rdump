@@ -247,7 +247,7 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
     use tree_sitter::Point;
-    use tree_sitter_rust::language;
+    use tree_sitter_rust::LANGUAGE;
 
     #[test]
     fn test_combine_with_hunks_and() {
@@ -329,7 +329,7 @@ mod tests {
         fs::write(&file_path, "fn main() {}").unwrap();
 
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
-        let language = language();
+        let language: tree_sitter::Language = LANGUAGE.into();
 
         // First access should parse and cache the tree
         let tree1_sexp = context

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 /// Creates the profile for the Python language.
 pub(super) fn create_python_profile() -> LanguageProfile {
-    let language = tree_sitter_python::language();
+    let language = tree_sitter_python::LANGUAGE.into();
     let mut queries = HashMap::new();
 
     let class_query = "(class_definition name: (identifier) @match)";

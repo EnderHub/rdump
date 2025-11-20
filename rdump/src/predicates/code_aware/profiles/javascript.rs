@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 /// Creates the profile for the JavaScript language.
 pub(super) fn create_javascript_profile() -> LanguageProfile {
-    let language = tree_sitter_javascript::language();
+    let language = tree_sitter_javascript::LANGUAGE.into();
     let mut queries = HashMap::new();
 
     let class_query = "(class_declaration name: (identifier) @match)";

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 /// Creates the profile for the TypeScript language.
 pub(super) fn create_typescript_profile() -> LanguageProfile {
-    let language = tree_sitter_typescript::language_typescript();
+    let language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
     let mut queries = HashMap::new();
 
     let class_query = "(class_declaration name: (type_identifier) @match)";
