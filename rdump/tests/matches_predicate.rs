@@ -32,8 +32,7 @@ fn test_matches_with_special_characters() {
     let (_dir, root) = setup_test_dir();
     let mut cmd = Command::cargo_bin("rdump").unwrap();
     cmd.current_dir(&root);
-    cmd.arg("search")
-        .arg(r#"matches:'\(hello world\)'"#);
+    cmd.arg("search").arg(r#"matches:'\(hello world\)'"#);
 
     cmd.assert()
         .success()
@@ -45,8 +44,7 @@ fn test_matches_multiple_lines() {
     let (_dir, root) = setup_test_dir();
     let mut cmd = Command::cargo_bin("rdump").unwrap();
     cmd.current_dir(&root);
-    cmd.arg("search")
-        .arg(r#"matches:'hello world'"#);
+    cmd.arg("search").arg(r#"matches:'hello world'"#);
 
     cmd.assert()
         .success()
@@ -58,8 +56,7 @@ fn test_matches_no_match() {
     let (_dir, root) = setup_test_dir();
     let mut cmd = Command::cargo_bin("rdump").unwrap();
     cmd.current_dir(&root);
-    cmd.arg("search")
-        .arg(r#"matches:'goodbye world'"#);
+    cmd.arg("search").arg(r#"matches:'goodbye world'"#);
 
     cmd.assert().success().stdout(predicate::str::is_empty());
 }
@@ -69,13 +66,14 @@ fn test_matches_case_insensitive() {
     let (_dir, root) = setup_test_dir();
     let mut cmd = Command::cargo_bin("rdump").unwrap();
     cmd.current_dir(&root);
-    cmd.arg("search")
-        .arg(r#"matches:'(?i)hello world'"#);
+    cmd.arg("search").arg(r#"matches:'(?i)hello world'"#);
 
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("file1.txt"))
-        .stdout(predicate::str::contains("hello world\n(hello world)\nHELLO WORLD"));
+        .stdout(predicate::str::contains(
+            "hello world\n(hello world)\nHELLO WORLD",
+        ));
 }
 
 #[test]
@@ -83,8 +81,7 @@ fn test_matches_unicode() {
     let (_dir, root) = setup_test_dir();
     let mut cmd = Command::cargo_bin("rdump").unwrap();
     cmd.current_dir(&root);
-    cmd.arg("search")
-        .arg(r#"matches:'こんにちは世界'"#);
+    cmd.arg("search").arg(r#"matches:'こんにちは世界'"#);
 
     cmd.assert()
         .success()

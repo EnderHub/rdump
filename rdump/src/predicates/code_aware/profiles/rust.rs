@@ -38,8 +38,7 @@ pub(super) fn create_rust_profile() -> LanguageProfile {
     // Query for the entire `use` declaration. We will match against its text content.
     queries.insert(
         PredicateKey::Import,
-        "\n        (use_declaration) @match\n        "
-        .to_string(),
+        "\n        (use_declaration) @match\n        ".to_string(),
     );
 
     // Query for function and method call sites.

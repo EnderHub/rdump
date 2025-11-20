@@ -97,8 +97,12 @@ fn test_size_predicate() -> Result<(), Box<dyn std::error::Error>> {
 
     let output_gt = cmd_gt.output()?.stdout;
     let output_gt_str = String::from_utf8_lossy(&output_gt);
-    assert_eq!(output_gt_str.lines().count(), 2, "Expected 2 files greater than 40 bytes, found: {}", output_gt_str);
-
+    assert_eq!(
+        output_gt_str.lines().count(),
+        2,
+        "Expected 2 files greater than 40 bytes, found: {}",
+        output_gt_str
+    );
 
     // Test for files less than 40 bytes
     let mut cmd_lt = Command::cargo_bin("rdump")?;
@@ -107,7 +111,12 @@ fn test_size_predicate() -> Result<(), Box<dyn std::error::Error>> {
 
     let output_lt = cmd_lt.output()?.stdout;
     let output_lt_str = String::from_utf8_lossy(&output_lt);
-    assert_eq!(output_lt_str.lines().count(), 1, "Expected 1 file less than 40 bytes, found: {}", output_lt_str);
+    assert_eq!(
+        output_lt_str.lines().count(),
+        1,
+        "Expected 1 file less than 40 bytes, found: {}",
+        output_lt_str
+    );
 
     Ok(())
 }

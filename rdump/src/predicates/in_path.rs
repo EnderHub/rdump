@@ -19,7 +19,10 @@ impl PredicateEvaluator for InPathEvaluator {
         if value.contains('*') || value.contains('?') || value.contains('[') || value.contains('{')
         {
             let glob = Glob::new(value)?.compile_matcher();
-            let relative_path = context.path.strip_prefix(&context.root).unwrap_or(&context.path);
+            let relative_path = context
+                .path
+                .strip_prefix(&context.root)
+                .unwrap_or(&context.path);
             if glob.is_match(relative_path) {
                 return Ok(MatchResult::Boolean(true));
             }
@@ -53,7 +56,9 @@ impl PredicateEvaluator for InPathEvaluator {
                     Ok(path) => path,
                     Err(_) => return Ok(MatchResult::Boolean(false)),
                 };
-                Ok(MatchResult::Boolean(canonical_file_parent == canonical_target))
+                Ok(MatchResult::Boolean(
+                    canonical_file_parent == canonical_target,
+                ))
             } else {
                 Ok(MatchResult::Boolean(false))
             }
@@ -247,7 +252,7 @@ mod tests {
         assert!(!evaluator
             .evaluate(&mut context_a, &PredicateKey::In, "project_b/*")?
             .is_match());
-            
+
         // This glob should also match.
         assert!(evaluator
             .evaluate(&mut context_a, &PredicateKey::In, "project_a/s?c")?
@@ -308,7 +313,7 @@ mod tests {
         assert!(evaluator
             .evaluate(&mut ctx_deep, &PredicateKey::In, "lib/d*p/**")?
             .is_match());
-         assert!(evaluator
+        assert!(evaluator
             .evaluate(&mut ctx_auth, &PredicateKey::In, "lib/**")?
             .is_match());
         assert!(!evaluator
@@ -332,7 +337,11 @@ mod tests {
         // Structure:
         //  /libs/feature/dependency-tracer/src/index.js
         //  /libs/feature/other/component.js
-        let tracer_src = root_path.join("libs").join("feature").join("dependency-tracer").join("src");
+        let tracer_src = root_path
+            .join("libs")
+            .join("feature")
+            .join("dependency-tracer")
+            .join("src");
         let other_src = root_path.join("libs").join("feature").join("other");
         fs::create_dir_all(&tracer_src)?;
         fs::create_dir_all(&other_src)?;
@@ -347,17 +356,29 @@ mod tests {
 
         // This should match the file inside dependency-tracer/src
         assert!(evaluator
-            .evaluate(&mut ctx_tracer, &PredicateKey::In, "libs/**/dependency-tracer/**")?
+            .evaluate(
+                &mut ctx_tracer,
+                &PredicateKey::In,
+                "libs/**/dependency-tracer/**"
+            )?
             .is_match());
-        
+
         // This should also match, as the file is within a directory that matches the glob.
         assert!(evaluator
-            .evaluate(&mut ctx_tracer, &PredicateKey::In, "libs/**/dependency-tracer/*")?
+            .evaluate(
+                &mut ctx_tracer,
+                &PredicateKey::In,
+                "libs/**/dependency-tracer/*"
+            )?
             .is_match());
 
         // This should not match the other file.
         assert!(!evaluator
-            .evaluate(&mut ctx_other, &PredicateKey::In, "libs/**/dependency-tracer/**")?
+            .evaluate(
+                &mut ctx_other,
+                &PredicateKey::In,
+                "libs/**/dependency-tracer/**"
+            )?
             .is_match());
 
         Ok(())

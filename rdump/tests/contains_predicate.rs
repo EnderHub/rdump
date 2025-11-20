@@ -1,5 +1,3 @@
-
-
 // In rdump/tests/contains_predicate.rs
 
 use assert_cmd::prelude::*;
@@ -63,4 +61,3 @@ fn test_contains_with_other_predicates() {
         .stdout(predicate::str::contains("main.rs"))
         .stdout(predicate::str::contains("main.go").not());
 }
-

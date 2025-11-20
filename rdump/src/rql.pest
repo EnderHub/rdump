@@ -32,8 +32,8 @@ generic_predicate = { identifier ~ ":" ~ value }
 
 
 // An `identifier` is the key for a predicate (e.g., "ext", "name", "contains").
-// It must consist of one or more alphanumeric characters.
-identifier = @{ ASCII_ALPHANUMERIC+ }
+// It must consist of one or more alphanumeric characters or underscores.
+identifier = @{ (ASCII_ALPHANUMERIC | "_")+ }
 
 // A `value` can be either quoted or unquoted.
 value = { quoted_value | unquoted_value }

@@ -98,21 +98,16 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
     }
 
     // Ensure we have a query to run.
-    let query_to_parse = final_query.ok_or_else(|| {
-        anyhow!("No query provided. Please provide a query or use a preset.")
-    })?;
+    let query_to_parse = final_query
+        .ok_or_else(|| anyhow!("No query provided. Please provide a query or use a preset."))?;
 
     if query_to_parse.trim().is_empty() {
         return Err(anyhow!("Empty query."));
     }
 
     // --- 1. Find initial candidates ---
-    let candidate_files = get_candidate_files(
-        &args.root,
-        args.no_ignore,
-        args.hidden,
-        args.max_depth,
-    )?;
+    let candidate_files =
+        get_candidate_files(&args.root, args.no_ignore, args.hidden, args.max_depth)?;
 
     // --- 2. Parse query ---
     let ast = parser::parse_query(&query_to_parse)?;
@@ -141,8 +136,11 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
                 Err(e) => {
                     let mut error_guard = first_error.lock().unwrap();
                     if error_guard.is_none() {
-                        *error_guard =
-                            Some(anyhow!("Error during pre-filter on {}: {}", path.display(), e));
+                        *error_guard = Some(anyhow!(
+                            "Error during pre-filter on {}: {}",
+                            path.display(),
+                            e
+                        ));
                     }
                     false
                 }
@@ -197,7 +195,6 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
 
     Ok(matching_files)
 }
-
 
 /// Walks the directory, respecting .gitignore, and applies our own smart defaults.
 fn get_candidate_files(
@@ -266,7 +263,10 @@ fn get_candidate_files(
                 if e.is_io() {
                     if let Some(inner) = e.clone().into_io_error() {
                         if inner.kind() == std::io::ErrorKind::NotFound {
-                            return Err(anyhow!("root path '{}' does not exist or is not accessible.", root.display()));
+                            return Err(anyhow!(
+                                "root path '{}' does not exist or is not accessible.",
+                                root.display()
+                            ));
                         }
                     }
                 }

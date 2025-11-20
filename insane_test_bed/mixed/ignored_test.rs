@@ -1,0 +1,3 @@
+// ignore
+// skip
+fn main() {}

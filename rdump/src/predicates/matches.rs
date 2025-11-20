@@ -65,11 +65,7 @@ mod tests {
             .is_match());
         // Test regex that finds a line
         assert!(evaluator
-            .evaluate(
-                &mut context,
-                &PredicateKey::Matches,
-                r#"author = "test""#
-            )
+            .evaluate(&mut context, &PredicateKey::Matches, r#"author = "test""#)
             .unwrap()
             .is_match());
         assert!(!evaluator

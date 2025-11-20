@@ -1,0 +1,1 @@
+fn call_log(){ log(); } fn log() {} fn println_wrapper(){ println!("hello"); }

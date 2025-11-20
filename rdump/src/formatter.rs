@@ -28,8 +28,8 @@ struct FileOutput {
 }
 
 fn read_file_content(path: &Path) -> Result<String> {
-    let bytes = fs::read(path)
-        .with_context(|| format!("Failed to read file {}", path.display()))?;
+    let bytes =
+        fs::read(path).with_context(|| format!("Failed to read file {}", path.display()))?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
@@ -42,9 +42,12 @@ fn print_markdown_format(
     for (i, (path, _)) in matching_files.iter().enumerate() {
         if with_headers {
             if i > 0 {
-                writeln!(writer, "
+                writeln!(
+                    writer,
+                    "
 ---
-")?;
+"
+                )?;
             }
             writeln!(writer, "File: {}", path.display())?;
             writeln!(writer, "---")?;
@@ -479,7 +482,16 @@ mod tests {
         let mut writer = Vec::new();
 
         // Test with use_color = true, which should be ignored for the Markdown format.
-        print_output(&mut writer, &paths, &Format::Markdown, false, false, true, 0).unwrap();
+        print_output(
+            &mut writer,
+            &paths,
+            &Format::Markdown,
+            false,
+            false,
+            true,
+            0,
+        )
+        .unwrap();
 
         let output = String::from_utf8(writer).unwrap();
 

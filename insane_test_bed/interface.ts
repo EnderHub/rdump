@@ -1,3 +1,1 @@
-interface MyInterface {
-    name: string;
-}
+export interface Name { value: string }

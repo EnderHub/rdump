@@ -1124,28 +1124,6 @@ rdump "(ext:ts | ext:js) & size:>50kb" --format=find
 
 ## Requirements
 
-### Requirements Overview
-
-This section defines the functional and non-functional requirements for rdump. Requirements are organized by category and include priority levels, rationale, and dependencies.
-
-#### Priority Definitions
-
-| Priority | Label | Description | SLA |
-|----------|-------|-------------|-----|
-| P0 | Critical | Core functionality, blocks release | Must have |
-| P1 | High | Important feature, significant value | Should have |
-| P2 | Medium | Nice to have, enhances experience | Could have |
-| P3 | Low | Future consideration | Won't have (this release) |
-
-#### Requirement Status
-
-| Status | Meaning |
-|--------|---------|
-| Implemented | Fully implemented and tested |
-| In Progress | Currently being developed |
-| Planned | Scheduled for development |
-| Proposed | Under consideration |
-
 ### Functional Requirements
 
 #### Core Query Language
@@ -1155,8 +1133,6 @@ This section defines the functional and non-functional requirements for rdump. R
   - FR1.2: Query string should be quoted to prevent shell interpretation
   - FR1.3: Query string shall be validated before execution
 
-  **Priority:** P0 - Critical
-  **Status:** Implemented
   **Rationale:** RQL is the primary interface for users. Without a query language, users would need to use multiple flags and options, reducing expressiveness and increasing complexity.
   **Dependencies:** None (foundational)
   **Acceptance Test:** `rdump "ext:rs"` returns all Rust files
@@ -1166,8 +1142,6 @@ This section defines the functional and non-functional requirements for rdump. R
   - FR2.2: `&` (AND) has higher precedence than `|` (OR)
   - FR2.3: Operators can also be written as `and`, `or`, `not`
 
-  **Priority:** P0 - Critical
-  **Status:** Implemented
   **Rationale:** Boolean operators enable composition of simple predicates into powerful queries. Standard precedence matches user expectations from programming languages and reduces need for parentheses.
   **Dependencies:** FR1
   **Acceptance Test:** `rdump "ext:rs & contains:fn | ext:py"` correctly parses as `(ext:rs & contains:fn) | ext:py`
@@ -1181,8 +1155,6 @@ This section defines the functional and non-functional requirements for rdump. R
   - FR3.1: Nested parentheses shall be supported to any depth
   - FR3.2: Unmatched parentheses shall produce clear error messages
 
-  **Priority:** P0 - Critical
-  **Status:** Implemented
   **Rationale:** Parentheses allow users to override default precedence when needed, essential for complex queries.
   **Dependencies:** FR1, FR2
   **Acceptance Test:** `rdump "(ext:rs | ext:py) & contains:main"` correctly groups the OR before the AND
@@ -1197,8 +1169,6 @@ This section defines the functional and non-functional requirements for rdump. R
   - FR4.2: Double quotes `"..."` shall be supported
   - FR4.3: Unquoted values shall be supported for simple strings
 
-  **Priority:** P0 - Critical
-  **Status:** Implemented
   **Rationale:** Many search patterns contain characters that are special in RQL (spaces, parentheses, operators). Quoting allows these to be used literally.
   **Dependencies:** FR1
   **Acceptance Test:** `rdump "contains:'fn main()'"` finds literal string "fn main()"
@@ -2402,7 +2372,6 @@ so that **I can find definitions and usages without false positives from text ma
 
 #### User Story Details
 
-**Priority:** P0 - Critical (core differentiating feature)
 **Estimated Effort:** 5 story points
 **Dependencies:** Story 1.1 (CLI Foundation), Story 1.4 (Parallel Processing)
 **Risk Level:** High (complex tree-sitter integration)

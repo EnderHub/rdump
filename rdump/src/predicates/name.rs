@@ -39,8 +39,10 @@ mod tests {
 
     #[test]
     fn test_name_evaluator() {
-        let mut context1 = FileContext::new(PathBuf::from("/home/user/Cargo.toml"), PathBuf::from("/"));
-        let mut context2 = FileContext::new(PathBuf::from("/home/user/main.rs"), PathBuf::from("/"));
+        let mut context1 =
+            FileContext::new(PathBuf::from("/home/user/Cargo.toml"), PathBuf::from("/"));
+        let mut context2 =
+            FileContext::new(PathBuf::from("/home/user/main.rs"), PathBuf::from("/"));
 
         let evaluator = NameEvaluator;
         assert!(evaluator

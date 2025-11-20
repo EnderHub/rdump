@@ -58,7 +58,8 @@ fn test_query_with_mixed_case_operators() {
     let (_dir, root) = setup_test_dir();
     let mut cmd = Command::cargo_bin("rdump").unwrap();
     cmd.current_dir(&root);
-    cmd.arg("search").arg(r#"name:"*.log" AND contains:"error""#);
+    cmd.arg("search")
+        .arg(r#"name:"*.log" AND contains:"error""#);
 
     cmd.assert()
         .success()

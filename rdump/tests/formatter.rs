@@ -20,10 +20,7 @@ fn test_formatter_merges_overlapping_hunks() {
     // The context for "match 1" is lines 1-3.
     // The context for "match 2" is lines 3-5.
     // These overlap on line 3 and should be merged.
-    cmd.arg("search")
-        .arg("contains:match")
-        .arg("-C")
-        .arg("1");
+    cmd.arg("search").arg("contains:match").arg("-C").arg("1");
 
     // The output should be a single, continuous block from line 1 to 5.
     // Crucially, it should NOT contain the "..." separator that would

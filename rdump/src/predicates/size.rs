@@ -106,7 +106,7 @@ mod tests {
         assert!(evaluator
             .evaluate(&mut context, &PredicateKey::Size, "?123")
             .is_err());
-            
+
         // Missing value
         assert!(evaluator
             .evaluate(&mut context, &PredicateKey::Size, ">")

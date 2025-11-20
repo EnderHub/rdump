@@ -67,7 +67,9 @@ fn test_hook_predicate_finds_built_in_hook() {
         .arg("hook:useState")
         .assert()
         .success()
-        .stdout(predicate::str::contains("const [count, setCount] = useState(0);"));
+        .stdout(predicate::str::contains(
+            "const [count, setCount] = useState(0);",
+        ));
 }
 
 #[test]
@@ -93,7 +95,9 @@ fn test_customhook_predicate_finds_hook_definition() {
         .arg("customhook:useAuth")
         .assert()
         .success()
-        .stdout(predicate::str::contains("export default function useAuth()"));
+        .stdout(predicate::str::contains(
+            "export default function useAuth()",
+        ));
 }
 
 #[test]

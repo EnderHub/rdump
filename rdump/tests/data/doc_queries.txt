@@ -1,0 +1,311 @@
+ext:rs
+ext:RS
+ext:py
+ext:js
+ext:jsx
+ext:ts
+ext:tsx
+ext:go
+ext:java
+ext:toml
+ext:yml
+ext:log
+ext:tmp
+ext:toml | ext:yml
+ext:js | ext:tsx
+ext:js | ext:jsx
+ext:js | ext:ts
+name:*_test.rs
+name:*.config.js
+name:*.spec.ts
+name:*.log
+name:*.txt
+name:README*
+name:Dockerfile
+name:readme.md
+name:test_*.rs
+name:?oo.txt
+name:[abc]*.rs
+name:main.rs
+name:utils.rs
+path:src/components
+path:src/api/
+path:tests/
+path:components
+path:models/
+path:/db/
+path:/repository/
+path:old
+path:build_info
+path:**/*.rs
+in:. & name:*.rs
+in:src & struct:User
+in:tests
+in:benches
+in:docs & func:test_user
+path_exact:/absolute/path/to/file.rs
+size:>100kb
+size:<1000
+size:>2kb
+size:<1mb
+size:>1gb
+size:>50kb
+size:>10kb
+size:>1kb
+size:>40b
+size:<40b
+size:=123
+size:=0
+ext:go & size:>50kb
+ext:toml & size:>1kb & modified:<2d
+import:old_module & size:>2kb
+contains:TODO & size:<1000
+modified:<2d
+modified:<1h
+modified:>7d
+modified:<30m
+modified:<1w
+modified:>1s
+modified:<1s
+modified:2024-11-19
+ext:tmp & modified:>7d
+size:>10kb & modified:<7d & (contains:TODO | contains:FIXME)
+contains:'fn main()'
+c:'fn main()'
+contains:database
+contains:TODO
+contains:useState
+contains:foo
+contains:error
+contains:warn
+contains:main
+contains:utility
+contains:hello
+contains:match
+contains:'main function'
+contains:'MAIN FUNCTION'
+contains:'this should not be found'
+contains:'This should be ignored.'
+contains:.await
+contains:'value * 2'
+contains:"user's settings"
+(ext:toml | ext:yml) & contains:database
+ext:rs & contains:fn
+name:*.log & contains:error
+contains:main and ext:rs
+m:'/struct \w+/'
+matches:'fn\s+\w+'
+m:'import\s+.*from'
+matches:'TODO:.*'
+matches:'(hello|world)'
+matches:'\(hello world\)'
+matches:'hello world'
+matches:'goodbye world'
+matches:'(?i)hello world'
+matches:'こんにちは世界'
+matches:'('
+str:/[A-Za-z0-9_\-]{20,}/ & !path:test
+str:/SELECT.*FROM/ & !(path:/db/ | path:/repository/)
+name:Dockerfile & !contains:/@sha256:/
+def:Cli
+def:Cli & ext:rs
+def:User
+def:Order
+def:Database
+def:Role
+def:Helper & ext:py
+def:OldLogger
+def:ILog | def:LogLevel
+def:NonExistent
+def:NonExistent & ext:py
+def:NonExistent & (ext:js | ext:ts)
+path:src/api/ & (def:User | def:Order)
+def:Role | def:User
+struct:User
+struct:Cli
+struct:Config & ext:rs
+struct:Server & ext:go
+struct:Point
+struct:NonExistent & ext:go
+struct:.
+struct:. & func:. & ext:rs
+ext:rs & struct:User
+path:models/ & ext:rs & struct:User
+struct:Cli & comment:TODO
+struct:User & !comment:TODO
+struct:Order & comment:TODO
+type:UserId & struct:User
+class:Application & ext:java
+class:Helper
+class:NonExistent & ext:java
+enum:Status
+interface:ILog
+interface:ILog & type:LogLevel
+interface:Name
+trait:Summary
+trait:Name
+type:UserId
+type:LogLevel
+type:Alias
+impl:NewsArticle
+impl:Name
+func:main
+func:new
+func:process_data
+func:process_data & ext:py
+func:run_helper
+func:createLog
+func:NewServer
+func:test_user
+func:non_existent_function
+func:name
+func:.
+ext:py & func:.
+ext:js & !func:.
+ext:rs & func:main
+func:main & ext:rs
+func:main & ext:py
+func:main | import:serde
+func:main & call:println
+func:NewServer | call:NewServer
+macro:my_macro
+macro:name
+import:react
+import:serde
+import:os & ext:py
+import:path & ext:ts
+import:fmt
+import:ArrayList
+import:old_module
+import:module
+import:std
+import:'@scope/pkg'
+ext:py & !import:.
+import:react & (ext:js | ext:tsx)
+import:react & ext:tsx & path:components
+import:fmt & comment:"HTTP server"
+import:ArrayList & comment:HACK
+call:process_data
+call:useState
+call:println
+call:my_func
+call:my_macro
+call:log & ext:js
+call:log & ext:ts
+call:run_helper | call:do_setup
+call:process_payment
+call:NewServer
+call:user_service
+call:println & ext:rs
+call:my_func & path:same_file_def_call.rs
+ext:rs & call:user_service & !contains:.await
+comment:TODO
+comment:FIXME
+comment:HACK
+comment:REVIEW
+comment:deprecated
+comment:ignore
+comment:skip
+comment:"HTTP server"
+comment:"A JSX comment"
+class:Helper & comment:FIXME
+(comment:ignore | comment:skip) & name:*test*
+str:error
+str:'Hello, World'
+str:"Hello, world!"
+str:"Hello from Java!"
+str:/tmp/data
+str:logging:
+str:literal
+component:App & ext:tsx
+component:Button & ext:jsx
+component:ClassComponent
+component:MemoizedComponent
+component:Component
+path:react_comprehensive.tsx & component:ClassComponent
+path:react_comprehensive.tsx & component:MemoizedComponent
+ext:tsx & !component:ClassComponent
+component:MemoizedComponent & hook:useMemo
+element:h1 & ext:tsx
+element:Button & ext:tsx
+element:div
+element:input
+element:button
+element:ClassComponent
+element:SVG.Circle
+element:Button & !prop:disabled
+element:Button & prop:disabled
+element:input & prop:id
+element:button & prop:disabled
+path:react_comprehensive.tsx & element:input & prop:id
+path:react_comprehensive.tsx & element:ClassComponent
+path:react_comprehensive.tsx & element:SVG.Circle
+hook:useState
+hook:useEffect
+hook:useCallback
+hook:useMemo
+hook:useAuth
+hook:.
+path:react_comprehensive.tsx & hook:.
+ext:tsx & hook:useState & !hook:useCallback
+path:react_comprehensive.tsx & hook:useEffect
+customhook:useAuth
+customhook:useWindowWidth
+customhook:.
+path:react_comprehensive.tsx & customhook:.
+path:react_comprehensive.tsx & customhook:useWindowWidth
+prop:onClick
+prop:disabled
+prop:id
+prop:name
+path:react_comprehensive.tsx & element:button & prop:disabled
+ext:py & func:main
+path:src & size:>1kb
+ext:rs & (contains:'foo' | name:'*_test.rs')
+struct:MyStruct & ext:rs & path:code.rs
+name:*.log AND contains:error
+def:User | def:Order
+contains:'foo' | name:'*_test.rs'
+name:*.log or name:*.txt
+ext:rs & !path:tests
+!ext:md
+contains:TODO & !path:vendor
+not path:old
+(ext:rs | ext:py) & (func:main | func:test)
+(name:main.rs | name:utils.rs) & contains:hello
+(contains:main | contains:utility) & ext:rs
+contains:foo | !contains:baz
+(ext:ts | ext:css) & !name:*.spec.ts
+ext:rs & !(path:tests | path:benches)
+ext:rs & !(in:tests | in:benches)
+((name:*.log or name:*.txt) and (contains:error or contains:warn)) and not (path:old)
+((ext:rs | ext:py) & (func:main | func:test)) & !path:vendor
+((ext:js | ext:ts) & import:react) | (ext:tsx & contains:useState)
+ext:rs & func:new & import:std
+(def:User | def:Account) & path:models
+import:react & ext:tsx
+ext:tsx & path:components
+name:*.spec.js
+size:>100kb & modified:<7d
+path:src & comment:TODO
+contains:'fn main()'
+name:'my file.txt'
+path:'src/my folder/'
+contains:'main function'
+matches:'/\d+/'
+contains:'foo & bar'
+ext:Py
+contains:Main
+name:*.log and contains:error
+ext:nonexistent
+contains:thisshouldnotexist12345
+path:nonexistent/path
+func:λ
+!ext:rs & contains:fn
+ext:rs & contains:fn | ext:py
+ext:rs & (contains:fn | contains:struct)
+struct:User & ext:rs
+ext:* & size:>0
+contains:the
+modified:<365d
+import:.

@@ -42,9 +42,7 @@ fn test_path_globstar_crosses_directory_boundaries() {
     let mut cmd = Command::cargo_bin("rdump").unwrap();
     cmd.current_dir(root);
     // This globstar (**) should match files at any depth.
-    cmd.arg("search")
-        .arg("--format=paths")
-        .arg("path:**/*.rs");
+    cmd.arg("search").arg("--format=paths").arg("path:**/*.rs");
 
     cmd.assert()
         .success()

@@ -61,11 +61,9 @@ fn test_graceful_failure_on_non_existent_root_path() {
         .arg("/path/that/absolutely/does/not/exist");
 
     // Should fail with a clear error message.
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains(
-            "root path '/path/that/absolutely/does/not/exist' does not exist",
-        ));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "root path '/path/that/absolutely/does/not/exist' does not exist",
+    ));
 }
 
 #[test]

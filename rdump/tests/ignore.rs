@@ -1,4 +1,3 @@
-
 // In rdump/tests/ignore.rs
 
 use assert_cmd::Command;
@@ -14,24 +13,20 @@ fn test_rdumpignore() -> Result<(), Box<dyn std::error::Error>> {
     let root = dir.path();
 
     // Create a file that should be ignored
-    fs::File::create(root.join("ignored.txt"))?
-        .write_all(b"This should be ignored.")?;
+    fs::File::create(root.join("ignored.txt"))?.write_all(b"This should be ignored.")?;
 
     // Create a file that should not be ignored
-    fs::File::create(root.join("not_ignored.txt"))?
-        .write_all(b"This should not be ignored.")?;
+    fs::File::create(root.join("not_ignored.txt"))?.write_all(b"This should not be ignored.")?;
 
     // Create a .rdumpignore file
-    fs::File::create(root.join(".rdumpignore"))?
-        .write_all(b"ignored.txt")?;
+    fs::File::create(root.join(".rdumpignore"))?.write_all(b"ignored.txt")?;
 
     let mut cmd = Command::cargo_bin("rdump")?;
     cmd.current_dir(root);
-    cmd.arg("search").arg("contains:\"This should be ignored.\"");
+    cmd.arg("search")
+        .arg("contains:\"This should be ignored.\"");
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::is_empty());
+    cmd.assert().success().stdout(predicate::str::is_empty());
 
     Ok(())
 }
@@ -48,9 +43,7 @@ fn test_rdumpignore_excludes_matching_pattern() -> Result<(), Box<dyn std::error
     cmd.current_dir(root);
     cmd.arg("search").arg("ext:log");
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::is_empty());
+    cmd.assert().success().stdout(predicate::str::is_empty());
 
     Ok(())
 }

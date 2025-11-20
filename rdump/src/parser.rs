@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use pest::iterators::{Pair, Pairs};
-pub use pest::Parser;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
+pub use pest::Parser;
 use pest_derive::Parser;
 
 #[derive(Parser)]
@@ -24,6 +24,7 @@ pub enum PredicateKey {
     Ext,
     Name,
     Path,
+    PathExact,
     Contains,
     Matches,
     Size,
@@ -64,6 +65,7 @@ impl AsRef<str> for PredicateKey {
             PredicateKey::Ext => "ext",
             PredicateKey::Name => "name",
             PredicateKey::Path => "path",
+            PredicateKey::PathExact => "path_exact",
             PredicateKey::Contains => "contains",
             PredicateKey::Matches => "matches",
             PredicateKey::Size => "size",
@@ -99,8 +101,11 @@ impl From<&str> for PredicateKey {
             "ext" => Self::Ext,
             "name" => Self::Name,
             "path" => Self::Path,
+            "path_exact" => Self::PathExact,
             "contains" => Self::Contains,
+            "c" => Self::Contains,
             "matches" => Self::Matches,
+            "m" => Self::Matches,
             "size" => Self::Size,
             "modified" => Self::Modified,
             "in" => Self::In,
@@ -205,8 +210,12 @@ fn build_ast_from_term(pair: Pair<Rule>) -> Result<AstNode> {
             if let Some(inner_predicate) = inner.next() {
                 let rule = inner_predicate.as_rule(); // Get the rule before moving
                 let mut predicate_parts = inner_predicate.into_inner();
-                let key_pair = predicate_parts.next().ok_or_else(|| anyhow!("Missing key in predicate for rule {:?}", rule))?;
-                let value_pair = predicate_parts.next().ok_or_else(|| anyhow!("Missing value in predicate for key '{}'", key_pair.as_str()))?;
+                let key_pair = predicate_parts
+                    .next()
+                    .ok_or_else(|| anyhow!("Missing key in predicate for rule {:?}", rule))?;
+                let value_pair = predicate_parts.next().ok_or_else(|| {
+                    anyhow!("Missing value in predicate for key '{}'", key_pair.as_str())
+                })?;
                 let key = PredicateKey::from(key_pair.as_str());
                 let value = unescape_value(value_pair.as_str());
                 Ok(AstNode::Predicate(key, value))
@@ -402,7 +411,9 @@ mod tests {
     fn test_error_on_trailing_operator() {
         let result = parse_query("ext:rs &");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("query cannot end with an operator"));
+        assert!(err
+            .to_string()
+            .contains("query cannot end with an operator"));
     }
 
     #[test]

@@ -294,7 +294,11 @@ mod tests {
         let language = language();
 
         // First access should parse and cache the tree
-        let tree1_sexp = context.get_tree(language.clone()).unwrap().root_node().to_sexp();
+        let tree1_sexp = context
+            .get_tree(language.clone())
+            .unwrap()
+            .root_node()
+            .to_sexp();
         assert!(context.tree.is_some());
 
         // Second access should return the cached tree

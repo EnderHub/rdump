@@ -34,8 +34,6 @@ rdump "path:src/ & ext:rs & !has_test"
 - Should support custom patterns for different project conventions
 - Could cache the "related files" set for efficiency
 
-**Effort:** Medium-High (1-2 weeks)
-
 ---
 
 ### 2. Automatic Query Optimization
@@ -45,8 +43,6 @@ rdump "path:src/ & ext:rs & !has_test"
 **Solution:** Reorder predicates by cost tier before evaluation.
 
 **Details:** See `docs/performance-optimizations.md` section 4.
-
-**Effort:** Low (1-2 hours)
 
 ---
 
@@ -59,8 +55,6 @@ rdump "path:src/ & ext:rs & !has_test"
 ```bash
 rdump --cache "ext:rs & func:main"
 ```
-
-**Effort:** Medium (3-5 days)
 
 ---
 
@@ -82,8 +76,6 @@ rdump "ext:rs & func:main" --intersect "modified:<1d"
 # Or using subqueries
 rdump "(ext:rs & func:main) - (path:test)"
 ```
-
-**Effort:** Medium (1 week)
 
 ---
 
@@ -108,8 +100,6 @@ rdump "ext:rs" --stats
 # Structs: 423
 ```
 
-**Effort:** Medium (1 week)
-
 ---
 
 ### 6. Watch Mode
@@ -121,8 +111,6 @@ rdump "ext:rs" --stats
 ```bash
 rdump --watch "ext:rs & func:test_" --format=count
 ```
-
-**Effort:** Medium (3-5 days)
 
 ---
 
@@ -146,8 +134,6 @@ no-tests = "!path:test & !name:*test*"
 function_query = "(function_item name: (identifier) @name)"
 ```
 
-**Effort:** Medium (3-5 days)
-
 ---
 
 ## Low Priority
@@ -162,8 +148,6 @@ function_query = "(function_item name: (identifier) @name)"
 rdump --interactive
 ```
 
-**Effort:** High (2-3 weeks)
-
 ---
 
 ### 9. Language Server Protocol (LSP) Integration
@@ -171,8 +155,6 @@ rdump --interactive
 **Problem:** IDE users can't easily use rdump queries.
 
 **Solution:** LSP server that provides rdump as a code action.
-
-**Effort:** High (2-3 weeks)
 
 ---
 
@@ -185,8 +167,6 @@ rdump --interactive
 ```bash
 rdump --plugin=./my_predicate.wasm "ext:rs & my_check:foo"
 ```
-
-**Effort:** High (3-4 weeks)
 
 ---
 
@@ -201,8 +181,6 @@ rdump "ext:rs & func:." --diff=HEAD~5
 rdump "ext:rs & func:." --since="2024-01-01"
 ```
 
-**Effort:** Medium (1 week)
-
 ---
 
 ### 12. Export Formats
@@ -214,8 +192,6 @@ rdump "ext:rs & func:." --since="2024-01-01"
 - HTML for reports
 - SARIF for security tools
 - Graphviz DOT for dependency visualization
-
-**Effort:** Low-Medium (2-5 days)
 
 ---
 
@@ -234,10 +210,8 @@ rdump "ext:rs & func:." --since="2024-01-01"
 
 To propose a new feature:
 1. Add it to this document with problem statement and proposed solution
-2. Estimate effort and priority
-3. Open a PR for discussion
+2. Open a PR for discussion
 
 Priority is based on:
 - User demand
-- Implementation effort
 - Impact on core use cases

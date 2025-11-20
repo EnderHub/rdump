@@ -1,0 +1,1 @@
+async fn user_service() { do_something().await; }

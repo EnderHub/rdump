@@ -8,3 +8,9 @@ class MyClass:
         print(f"Value: {self.value}")
 
 # A comment
+
+def do_setup():
+    return "setup"
+
+def run_helper():
+    return do_setup()
