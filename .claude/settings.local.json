@@ -5,7 +5,10 @@
       "Bash(cat:*)",
       "Bash(git checkout:*)",
       "Bash(cargo test:*)",
-      "Bash(cargo tarpaulin:*)"
+      "Bash(cargo tarpaulin:*)",
+      "Bash(tree:*)",
+      "Bash(for:*)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
