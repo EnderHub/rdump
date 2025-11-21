@@ -694,17 +694,6 @@ cargo test rust_search        # Rust semantic tests
 
 ### Coverage Target
 
-- Core modules: >80%
-- Predicates: >90%
+- Core modules: >95%
+- Predicates: >95%
 - Integration: All RQL features
-
----
-
-## Change Log
-
-| Version | Date | Changes |
-|---------|------|---------|
-| 3.1 | 2025-11-20 | Dependency stack refresh (core crates + tree-sitter grammar versions) |
-| 3.0 | 2024-11-20 | Simplified to types and signatures |
-| 2.0 | 2024-11-20 | Extensive expansion with implementations |
-| 1.0 | 2024-11-20 | Initial architecture document |
