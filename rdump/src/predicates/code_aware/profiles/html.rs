@@ -24,10 +24,7 @@ pub(super) fn create_html_profile() -> LanguageProfile {
 
     // Comments / Strings
     queries.insert(PredicateKey::Comment, "(comment) @match".to_string());
-    queries.insert(
-        PredicateKey::Str,
-        "(text) @match".to_string(),
-    );
+    queries.insert(PredicateKey::Str, "(text) @match".to_string());
 
     LanguageProfile {
         name: "HTML",

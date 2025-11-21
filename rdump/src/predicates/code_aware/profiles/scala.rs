@@ -23,7 +23,10 @@ pub(super) fn create_scala_profile() -> LanguageProfile {
     queries.insert(PredicateKey::Func, func_query.to_string());
 
     // --- Imports ---
-    queries.insert(PredicateKey::Import, "(import_declaration) @match".to_string());
+    queries.insert(
+        PredicateKey::Import,
+        "(import_declaration) @match".to_string(),
+    );
 
     // --- Calls ---
     // Calls: allow any call_expression match; caller filtered by substring later.

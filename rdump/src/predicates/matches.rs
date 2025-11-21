@@ -1,11 +1,11 @@
 use super::PredicateEvaluator;
 use crate::evaluator::{FileContext, MatchResult};
+use crate::limits::MAX_REGEX_EVAL_DURATION;
 use crate::parser::PredicateKey;
 use anyhow::Result;
-use std::time::Instant;
 use regex::RegexBuilder;
+use std::time::Instant;
 use tree_sitter::Range;
-use crate::limits::MAX_REGEX_EVAL_DURATION;
 
 pub(super) struct MatchesEvaluator;
 impl PredicateEvaluator for MatchesEvaluator {

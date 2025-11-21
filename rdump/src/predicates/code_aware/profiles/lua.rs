@@ -32,10 +32,7 @@ pub(super) fn create_lua_profile() -> LanguageProfile {
 
     // --- Comments / Strings ---
     queries.insert(PredicateKey::Comment, "(comment) @match".to_string());
-    queries.insert(
-        PredicateKey::Str,
-        "(string) @match".to_string(),
-    );
+    queries.insert(PredicateKey::Str, "(string) @match".to_string());
 
     LanguageProfile {
         name: "Lua",

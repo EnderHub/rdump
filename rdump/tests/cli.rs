@@ -600,7 +600,11 @@ fn test_search_no_headers_flag() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("fn main()"))
-        .stdout(predicate::str::contains("Hello").not().or(predicate::str::contains("println")));
+        .stdout(
+            predicate::str::contains("Hello")
+                .not()
+                .or(predicate::str::contains("println")),
+        );
     Ok(())
 }
 

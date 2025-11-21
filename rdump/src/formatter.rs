@@ -15,8 +15,8 @@ use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
 use tree_sitter::Range;
 
 // We need to pass the format enum from main.rs
-use crate::Format;
 use crate::limits::{is_probably_binary, maybe_contains_secret, MAX_FILE_SIZE};
+use crate::Format;
 
 // Lazily load syntax and theme sets once.
 static SYNTAX_SET: Lazy<SyntaxSet> = Lazy::new(SyntaxSet::load_defaults_newlines);
@@ -41,7 +41,8 @@ fn read_file_content(path: &Path) -> Result<Option<String>> {
         return Ok(None);
     }
 
-    let bytes = fs::read(path).with_context(|| format!("Failed to read file {}", path.display()))?;
+    let bytes =
+        fs::read(path).with_context(|| format!("Failed to read file {}", path.display()))?;
 
     if is_probably_binary(&bytes) {
         eprintln!("Skipping binary file {}", path.display());
@@ -613,16 +614,19 @@ mod tests {
             &mut writer,
             &paths,
             &Format::Cat,
-            true,  // with_line_numbers
+            true, // with_line_numbers
             false,
-            true,  // use_color (ANSI)
+            true, // use_color (ANSI)
             0,
         )
         .unwrap();
         let output = String::from_utf8(writer).unwrap();
 
         // Should contain line numbers and ANSI codes
-        assert!(output.contains(" | "), "Should contain line number separator");
+        assert!(
+            output.contains(" | "),
+            "Should contain line number separator"
+        );
         assert!(output.contains("\x1b["), "Should contain ANSI escape codes");
     }
 

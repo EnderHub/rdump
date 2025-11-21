@@ -14,6 +14,7 @@ use tree_sitter::Range;
 use crate::evaluator::{Evaluator, FileContext, MatchResult};
 use crate::formatter;
 use crate::parser::{self, AstNode, PredicateKey};
+use crate::predicates::code_aware::CodeAwareSettings;
 use crate::predicates::{self, PredicateEvaluator};
 
 /// The main entry point for the `search` command.
@@ -161,7 +162,11 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
 
     // --- 4. Main Evaluation Pass (Content + Semantic) ---
     // This pass uses the full evaluator on the smaller, pre-filtered set of files.
-    let full_registry = predicates::create_predicate_registry();
+    let mut code_settings = CodeAwareSettings::default();
+    if let Some(dialect) = args.dialect {
+        code_settings.sql_dialect = Some(dialect.into());
+    }
+    let full_registry = predicates::create_predicate_registry_with_settings(code_settings);
     let evaluator = Evaluator::new(ast, full_registry);
 
     let first_error = Mutex::new(None);
@@ -403,6 +408,7 @@ mod tests {
             query: Some("ext:rs".to_string()),
             root: root.clone(),
             output: Some(output_file.clone()),
+            dialect: None,
             color: ColorChoice::Auto, // This is the default
             // Other fields can be default
             preset: vec![],

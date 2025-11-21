@@ -2,28 +2,31 @@ use crate::parser::PredicateKey;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
-mod c;
-mod csharp;
-mod cpp;
-mod go;
-mod java;
-mod javascript;
-mod php;
-mod ruby;
-mod python;
-mod react; // Add react module
-mod rust;
-mod scala;
+use super::SqlDialect;
+
 mod bash;
+mod c;
+mod cpp;
+mod csharp;
 mod css;
 mod elixir;
+mod go;
+mod haskell;
 mod html;
+mod java;
+mod javascript;
 mod lua;
 mod ocaml;
-mod zig;
+mod php;
+mod python;
+mod react; // Add react module
+mod ruby;
+mod rust;
+mod scala;
+mod sql;
 mod swift;
 mod typescript;
-mod haskell;
+mod zig;
 
 /// Defines the tree-sitter queries and metadata for a specific language.
 pub struct LanguageProfile {
@@ -68,10 +71,19 @@ pub(super) static LANGUAGE_PROFILES: Lazy<HashMap<&'static str, LanguageProfile>
         m.insert("ts", typescript::create_typescript_profile());
         m.insert("js", javascript::create_javascript_profile());
         m.insert("jsx", react::create_react_profile());
+        m.insert("tsx", react::create_react_profile());
+        m.insert(SqlDialect::Generic.key(), sql::create_generic_profile());
+        m.insert(SqlDialect::Postgres.key(), sql::create_postgres_profile());
+        m.insert(SqlDialect::Mysql.key(), sql::create_mysql_profile());
+        m.insert(SqlDialect::Sqlite.key(), sql::create_sqlite_profile());
         m
     });
 
 /// Returns a list of all configured language profiles.
 pub fn list_language_profiles() -> Vec<&'static LanguageProfile> {
     LANGUAGE_PROFILES.values().collect()
+}
+
+pub(super) fn get_profile(key: &str) -> Option<&'static LanguageProfile> {
+    LANGUAGE_PROFILES.get(key)
 }

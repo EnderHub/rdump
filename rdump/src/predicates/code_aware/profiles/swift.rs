@@ -13,20 +13,16 @@ pub(super) fn create_swift_profile() -> LanguageProfile {
     let func_query = "(function_declaration name: (simple_identifier) @match)";
     let call_query = "(call_expression) @match";
 
-    queries.insert(
-        PredicateKey::Def,
-        [
-            class_query,
-            func_query,
-        ]
-        .join("\n"),
-    );
+    queries.insert(PredicateKey::Def, [class_query, func_query].join("\n"));
     queries.insert(PredicateKey::Class, class_query.to_string());
     // Other type-level predicates (struct/enum/protocol/extension) omitted due to grammar tokens-only nodes.
     queries.insert(PredicateKey::Func, func_query.to_string());
 
     // --- Imports ---
-    queries.insert(PredicateKey::Import, "(import_declaration) @match".to_string());
+    queries.insert(
+        PredicateKey::Import,
+        "(import_declaration) @match".to_string(),
+    );
 
     // --- Calls ---
     queries.insert(PredicateKey::Call, call_query.to_string());

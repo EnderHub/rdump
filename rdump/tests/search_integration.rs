@@ -12,6 +12,7 @@ fn create_test_args(root: &Path, query: &str) -> SearchArgs {
         root: root.to_path_buf(),
         preset: vec![],
         output: None,
+        dialect: None,
         line_numbers: false,
         no_headers: false,
         format: Format::Paths,

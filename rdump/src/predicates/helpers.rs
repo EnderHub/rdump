@@ -115,7 +115,10 @@ mod tests {
         // This tests line 26 - Invalid size unit error
         let result = parse_and_compare_size(1000, "100xyz");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid size unit"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid size unit"));
     }
 
     #[test]

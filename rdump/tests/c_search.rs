@@ -78,7 +78,9 @@ fn test_function_like_macro_predicate_c() {
         .arg("macro:LOG_INT")
         .assert()
         .success()
-        .stdout(predicate::str::contains("#define LOG_INT(x) log_message(#x)"));
+        .stdout(predicate::str::contains(
+            "#define LOG_INT(x) log_message(#x)",
+        ));
 }
 
 #[test]

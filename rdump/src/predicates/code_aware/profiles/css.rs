@@ -11,14 +11,14 @@ pub(super) fn create_css_profile() -> LanguageProfile {
     let selector_query = "(selectors (class_selector (class_name) @match))";
     let id_query = "(selectors (id_selector (id_name) @match))";
 
-    queries.insert(
-        PredicateKey::Def,
-        [selector_query, id_query].join("\n"),
-    );
+    queries.insert(PredicateKey::Def, [selector_query, id_query].join("\n"));
     queries.insert(PredicateKey::Type, selector_query.to_string());
 
     // Imports (e.g., @import url(".."))
-    queries.insert(PredicateKey::Import, "(import_statement) @match".to_string());
+    queries.insert(
+        PredicateKey::Import,
+        "(import_statement) @match".to_string(),
+    );
 
     // Calls not applicable for CSS; leave empty.
     queries.insert(PredicateKey::Call, "".to_string());

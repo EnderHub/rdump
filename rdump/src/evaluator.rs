@@ -4,9 +4,9 @@ use std::fs;
 use std::path::PathBuf;
 use tree_sitter::{Parser, Range, Tree};
 
+use crate::limits::{is_probably_binary, maybe_contains_secret, MAX_FILE_SIZE};
 use crate::parser::{AstNode, LogicalOperator, PredicateKey};
 use crate::predicates::PredicateEvaluator;
-use crate::limits::{is_probably_binary, maybe_contains_secret, MAX_FILE_SIZE};
 
 /// The result of an evaluation for a single file.
 #[derive(Debug, Clone)]
@@ -27,6 +27,10 @@ pub struct FileContext {
     _skipped_content: bool,
     // Cache for the parsed tree-sitter AST
     tree: Option<Tree>,
+    /// Language key for the cached tree (used to reparse when dialect changes).
+    tree_language_key: Option<String>,
+    /// Cached SQL dialect/profile key chosen for this file.
+    sql_profile_key: Option<String>,
 }
 
 impl FileContext {
@@ -39,6 +43,8 @@ impl FileContext {
             content: None,
             _skipped_content: false,
             tree: None,
+            tree_language_key: None,
+            sql_profile_key: None,
         }
     }
 
@@ -85,8 +91,12 @@ impl FileContext {
     }
 
     // Lazily parses the file with tree-sitter and caches the result.
-    pub fn get_tree(&mut self, language: tree_sitter::Language) -> Result<&Tree> {
-        if self.tree.is_none() {
+    pub fn get_tree(
+        &mut self,
+        language_key: &str,
+        language: tree_sitter::Language,
+    ) -> Result<&Tree> {
+        if self.tree.is_none() || self.tree_language_key.as_deref() != Some(language_key) {
             let path_display = self.path.display().to_string();
             let content = self.get_content()?;
             let mut parser = Parser::new();
@@ -97,8 +107,19 @@ impl FileContext {
                 .parse(content, None)
                 .ok_or_else(|| anyhow!("Tree-sitter failed to parse {path_display}"))?;
             self.tree = Some(tree);
+            self.tree_language_key = Some(language_key.to_string());
         }
         Ok(self.tree.as_ref().unwrap())
+    }
+
+    /// Returns the cached SQL profile key, if any.
+    pub fn sql_profile_key(&self) -> Option<&str> {
+        self.sql_profile_key.as_deref()
+    }
+
+    /// Stores the SQL profile key chosen for this file.
+    pub fn set_sql_profile_key(&mut self, key: &str) {
+        self.sql_profile_key = Some(key.to_string());
     }
 }
 
@@ -333,14 +354,18 @@ mod tests {
 
         // First access should parse and cache the tree
         let tree1_sexp = context
-            .get_tree(language.clone())
+            .get_tree("rust", language.clone())
             .unwrap()
             .root_node()
             .to_sexp();
         assert!(context.tree.is_some());
 
         // Second access should return the cached tree
-        let tree2_sexp = context.get_tree(language).unwrap().root_node().to_sexp();
+        let tree2_sexp = context
+            .get_tree("rust", language)
+            .unwrap()
+            .root_node()
+            .to_sexp();
 
         assert_eq!(tree1_sexp, tree2_sexp);
     }

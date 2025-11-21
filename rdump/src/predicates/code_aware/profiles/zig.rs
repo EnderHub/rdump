@@ -17,7 +17,10 @@ pub(super) fn create_zig_profile() -> LanguageProfile {
     queries.insert(PredicateKey::Type, ident.to_string());
 
     // Imports (@import).
-    queries.insert(PredicateKey::Import, "(builtin_identifier) @match".to_string());
+    queries.insert(
+        PredicateKey::Import,
+        "(builtin_identifier) @match".to_string(),
+    );
 
     // Calls
     queries.insert(PredicateKey::Call, ident.to_string());

@@ -9,7 +9,6 @@ pub mod name;
 pub mod path;
 pub mod size;
 
-use self::code_aware::CodeAwareEvaluator;
 use self::contains::ContainsEvaluator;
 use self::ext::ExtEvaluator;
 use self::in_path::InPathEvaluator;
@@ -23,6 +22,7 @@ use crate::parser::PredicateKey;
 use anyhow::Result;
 use std::collections::HashMap;
 
+use self::code_aware::{CodeAwareEvaluator, CodeAwareSettings};
 // The core trait that all predicate evaluators must implement.
 pub trait PredicateEvaluator {
     // The key is now passed to allow one evaluator to handle multiple predicate types.
@@ -55,6 +55,13 @@ pub fn create_metadata_predicate_registry(
 /// Creates and populates the complete predicate registry.
 pub fn create_predicate_registry(
 ) -> HashMap<PredicateKey, Box<dyn PredicateEvaluator + Send + Sync>> {
+    create_predicate_registry_with_settings(CodeAwareSettings::default())
+}
+
+/// Creates and populates the complete predicate registry with custom settings.
+pub fn create_predicate_registry_with_settings(
+    settings: CodeAwareSettings,
+) -> HashMap<PredicateKey, Box<dyn PredicateEvaluator + Send + Sync>> {
     // Start with the metadata predicates
     let mut registry = create_metadata_predicate_registry();
 
@@ -63,7 +70,7 @@ pub fn create_predicate_registry(
     registry.insert(PredicateKey::Matches, Box::new(MatchesEvaluator));
 
     // Register the single CodeAwareEvaluator for all semantic predicate keys.
-    let code_evaluator = Box::new(CodeAwareEvaluator);
+    let code_evaluator = Box::new(CodeAwareEvaluator::new(settings));
     registry.insert(PredicateKey::Def, code_evaluator.clone());
     registry.insert(PredicateKey::Func, code_evaluator.clone());
     registry.insert(PredicateKey::Import, code_evaluator.clone());
@@ -118,7 +125,7 @@ mod tests {
         let mut file = std::fs::File::create(&file_path).unwrap();
         file.write_all(rust_code.as_bytes()).unwrap();
 
-        let evaluator = CodeAwareEvaluator;
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
 
         // --- Granular Defs ---
         let mut ctx =
@@ -202,7 +209,7 @@ mod tests {
         let mut file = std::fs::File::create(&file_path).unwrap();
         file.write_all(rust_code.as_bytes()).unwrap();
 
-        let evaluator = CodeAwareEvaluator;
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
         let mut ctx =
             FileContext::new(file_path.clone(), file_path.parent().unwrap().to_path_buf());
 
@@ -241,7 +248,7 @@ def process_data():
         let mut file = std::fs::File::create(&file_path).unwrap();
         file.write_all(python_code.as_bytes()).unwrap();
 
-        let evaluator = CodeAwareEvaluator;
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
 
         // --- Granular Defs ---
         let mut ctx =
@@ -329,7 +336,7 @@ def process_data():
         let mut file = std::fs::File::create(&file_path).unwrap();
         file.write_all(js_code.as_bytes()).unwrap();
 
-        let evaluator = CodeAwareEvaluator;
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
 
         let mut ctx =
             FileContext::new(file_path.clone(), file_path.parent().unwrap().to_path_buf());
@@ -392,7 +399,7 @@ def process_data():
         let mut file = std::fs::File::create(&file_path).unwrap();
         file.write_all(ts_code.as_bytes()).unwrap();
 
-        let evaluator = CodeAwareEvaluator;
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
 
         // --- Granular Defs ---
         let mut ctx =
@@ -477,7 +484,7 @@ def process_data():
         let mut file = std::fs::File::create(&file_path).unwrap();
         file.write_all(go_code.as_bytes()).unwrap();
 
-        let evaluator = CodeAwareEvaluator;
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
 
         let mut ctx =
             FileContext::new(file_path.clone(), file_path.parent().unwrap().to_path_buf());
@@ -533,7 +540,7 @@ def process_data():
         let mut file = std::fs::File::create(&file_path).unwrap();
         file.write_all(java_code.as_bytes()).unwrap();
 
-        let evaluator = CodeAwareEvaluator;
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
 
         let mut ctx =
             FileContext::new(file_path.clone(), file_path.parent().unwrap().to_path_buf());

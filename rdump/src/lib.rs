@@ -56,6 +56,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 // Bring our command functions into scope
+use crate::predicates::code_aware::SqlDialect as CodeSqlDialect;
 use commands::{lang::run_lang, preset::run_preset, search::run_search};
 
 // These structs and enums define the public API of our CLI.
@@ -89,6 +90,25 @@ pub enum ColorChoice {
     Auto,
     Always,
     Never,
+}
+
+#[derive(Debug, Clone, ValueEnum, Copy)]
+pub enum SqlDialectFlag {
+    Generic,
+    Postgres,
+    Mysql,
+    Sqlite,
+}
+
+impl From<SqlDialectFlag> for CodeSqlDialect {
+    fn from(value: SqlDialectFlag) -> Self {
+        match value {
+            SqlDialectFlag::Generic => CodeSqlDialect::Generic,
+            SqlDialectFlag::Postgres => CodeSqlDialect::Postgres,
+            SqlDialectFlag::Mysql => CodeSqlDialect::Mysql,
+            SqlDialectFlag::Sqlite => CodeSqlDialect::Sqlite,
+        }
+    }
 }
 
 #[derive(Parser, Debug, Default)]
@@ -138,6 +158,9 @@ pub struct SearchArgs {
     ///   prop:<str>         - A prop being passed to a JSX element
     #[arg(verbatim_doc_comment, name = "QUERY")]
     pub query: Option<String>,
+    /// Force the SQL dialect to use for .sql files (overrides auto-detection).
+    #[arg(long, value_enum, ignore_case = true)]
+    pub dialect: Option<SqlDialectFlag>,
     #[arg(long, short)]
     pub preset: Vec<String>,
     #[arg(short, long, default_value = ".")]

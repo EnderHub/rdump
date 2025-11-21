@@ -31,13 +31,7 @@ pub(super) fn create_cpp_profile() -> LanguageProfile {
 
     queries.insert(
         PredicateKey::Def,
-        [
-            class_query,
-            struct_query,
-            enum_query,
-            func_query,
-        ]
-        .join("\n"),
+        [class_query, struct_query, enum_query, func_query].join("\n"),
     );
     queries.insert(PredicateKey::Class, class_query.to_string());
     queries.insert(PredicateKey::Struct, struct_query.to_string());

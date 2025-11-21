@@ -23,6 +23,7 @@ fn build_args(root: &PathBuf, query: &str) -> SearchArgs {
         root: root.clone(),
         preset: vec![],
         output: None,
+        dialect: None,
         line_numbers: false,
         no_headers: false,
         format: Format::Paths,
