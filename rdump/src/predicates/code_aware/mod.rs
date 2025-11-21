@@ -220,3 +220,262 @@ fn detect_sql_dialect(content: &str) -> Option<SqlDialect> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::evaluator::FileContext;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_sql_dialect_key() {
+        assert_eq!(SqlDialect::Generic.key(), "sql");
+        assert_eq!(SqlDialect::Postgres.key(), "sqlpg");
+        assert_eq!(SqlDialect::Mysql.key(), "sqlmysql");
+        assert_eq!(SqlDialect::Sqlite.key(), "sqlsqlite");
+    }
+
+    #[test]
+    fn test_detect_sql_dialect_mysql() {
+        let content = "DELIMITER //\nCREATE PROCEDURE foo() BEGIN END//";
+        assert_eq!(detect_sql_dialect(content), Some(SqlDialect::Mysql));
+    }
+
+    #[test]
+    fn test_detect_sql_dialect_sqlite() {
+        let content = "CREATE TRIGGER foo BEGIN ATOMIC UPDATE t; END;";
+        assert_eq!(detect_sql_dialect(content), Some(SqlDialect::Sqlite));
+    }
+
+    #[test]
+    fn test_detect_sql_dialect_postgres() {
+        let content = "CREATE FUNCTION foo() RETURNS TABLE (id INT) AS $$ BEGIN END $$";
+        assert_eq!(detect_sql_dialect(content), Some(SqlDialect::Postgres));
+    }
+
+    #[test]
+    fn test_detect_sql_dialect_postgres_plpgsql() {
+        let content = "CREATE FUNCTION foo() language plpgsql AS $$ BEGIN END $$";
+        assert_eq!(detect_sql_dialect(content), Some(SqlDialect::Postgres));
+    }
+
+    #[test]
+    fn test_detect_sql_dialect_generic() {
+        let content = "SELECT * FROM users;";
+        assert_eq!(detect_sql_dialect(content), None);
+    }
+
+    #[test]
+    fn test_code_aware_evaluator_new() {
+        let settings = CodeAwareSettings::default();
+        let evaluator = CodeAwareEvaluator::new(settings);
+        assert!(evaluator.settings.sql_dialect.is_none());
+    }
+
+    #[test]
+    fn test_code_aware_evaluator_with_dialect() {
+        let settings = CodeAwareSettings {
+            sql_dialect: Some(SqlDialect::Postgres),
+        };
+        let evaluator = CodeAwareEvaluator::new(settings);
+        assert_eq!(evaluator.settings.sql_dialect, Some(SqlDialect::Postgres));
+    }
+
+    #[test]
+    fn test_select_language_profile_rust() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn main() {}").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.select_language_profile("rs", &mut context).unwrap();
+        assert!(result.is_some());
+        let (key, profile) = result.unwrap();
+        assert_eq!(key, "rs");
+        assert_eq!(profile.name, "Rust");
+    }
+
+    #[test]
+    fn test_select_language_profile_unsupported() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.xyz");
+        fs::write(&file_path, "some content").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.select_language_profile("xyz", &mut context).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_select_language_profile_sql_with_dialect() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.sql");
+        fs::write(&file_path, "SELECT * FROM users;").unwrap();
+
+        let settings = CodeAwareSettings {
+            sql_dialect: Some(SqlDialect::Postgres),
+        };
+        let evaluator = CodeAwareEvaluator::new(settings);
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.select_language_profile("sql", &mut context).unwrap();
+        assert!(result.is_some());
+        let (key, _) = result.unwrap();
+        assert_eq!(key, "sqlpg");
+    }
+
+    #[test]
+    fn test_select_sql_profile_cached() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.sql");
+        fs::write(&file_path, "SELECT * FROM users;").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        // Pre-set the cached key
+        context.set_sql_profile_key("cached_key");
+
+        let result = evaluator.select_sql_profile(&mut context).unwrap();
+        assert_eq!(result, "cached_key");
+    }
+
+    #[test]
+    fn test_evaluate_unsupported_extension() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.xyz");
+        fs::write(&file_path, "some content").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "main").unwrap();
+        assert!(!result.is_match());
+    }
+
+    #[test]
+    fn test_evaluate_unsupported_predicate_for_language() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.css");
+        fs::write(&file_path, ".class { color: red; }").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        // CSS doesn't support func predicate
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "main").unwrap();
+        assert!(!result.is_match());
+    }
+
+    #[test]
+    fn test_evaluate_rust_func() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn main() {}\nfn helper() {}").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "main").unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_evaluate_rust_func_not_found() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn main() {}").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "nonexistent").unwrap();
+        assert!(!result.is_match());
+    }
+
+    #[test]
+    fn test_evaluate_import_contains() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "use std::collections::HashMap;").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        // Import predicate uses contains matching
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Import, "HashMap").unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_evaluate_comment_contains() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "// TODO: fix this\nfn main() {}").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Comment, "TODO").unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_evaluate_string_contains() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn main() { let s = \"hello world\"; }").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Str, "hello").unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_evaluate_call_contains() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn main() { println!(\"hi\"); }").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Call, "println").unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_evaluate_wildcard_match() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn any_func() {}").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        // Wildcard "." should match any function
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, ".").unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_evaluate_no_extension() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("Makefile");
+        fs::write(&file_path, "all:\n\techo hello").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        // No extension means unsupported
+        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "main").unwrap();
+        assert!(!result.is_match());
+    }
+}

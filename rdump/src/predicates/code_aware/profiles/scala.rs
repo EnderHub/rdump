@@ -19,6 +19,7 @@ pub(super) fn create_scala_profile() -> LanguageProfile {
     );
     queries.insert(PredicateKey::Class, class_query.to_string());
     queries.insert(PredicateKey::Type, object_query.to_string());
+    queries.insert(PredicateKey::Object, object_query.to_string());
     queries.insert(PredicateKey::Trait, trait_query.to_string());
     queries.insert(PredicateKey::Func, func_query.to_string());
 

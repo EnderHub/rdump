@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo build:*)"
+      "Read(//Users/alm/RustroverProjects/rdump/**)"
     ],
     "deny": [],
     "ask": []

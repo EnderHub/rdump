@@ -271,6 +271,182 @@ mod tests {
     use tree_sitter_rust::LANGUAGE;
 
     #[test]
+    fn test_match_result_is_match_boolean() {
+        assert!(MatchResult::Boolean(true).is_match());
+        assert!(!MatchResult::Boolean(false).is_match());
+    }
+
+    #[test]
+    fn test_match_result_is_match_hunks() {
+        let empty_hunks = MatchResult::Hunks(vec![]);
+        assert!(!empty_hunks.is_match());
+
+        let with_hunks = MatchResult::Hunks(vec![Range {
+            start_byte: 0,
+            end_byte: 10,
+            start_point: Point { row: 0, column: 0 },
+            end_point: Point { row: 0, column: 10 },
+        }]);
+        assert!(with_hunks.is_match());
+    }
+
+    #[test]
+    fn test_combine_and_both_false() {
+        let result1 = MatchResult::Boolean(false);
+        let result2 = MatchResult::Boolean(false);
+        let combined = result1.combine_with(result2, &LogicalOperator::And);
+        assert!(!combined.is_match());
+    }
+
+    #[test]
+    fn test_combine_and_left_false() {
+        let result1 = MatchResult::Boolean(false);
+        let result2 = MatchResult::Boolean(true);
+        let combined = result1.combine_with(result2, &LogicalOperator::And);
+        assert!(!combined.is_match());
+    }
+
+    #[test]
+    fn test_combine_and_right_false() {
+        let result1 = MatchResult::Boolean(true);
+        let result2 = MatchResult::Boolean(false);
+        let combined = result1.combine_with(result2, &LogicalOperator::And);
+        assert!(!combined.is_match());
+    }
+
+    #[test]
+    fn test_combine_and_hunks_with_empty() {
+        let hunks = vec![Range {
+            start_byte: 0,
+            end_byte: 10,
+            start_point: Point { row: 0, column: 0 },
+            end_point: Point { row: 0, column: 10 },
+        }];
+        let result1 = MatchResult::Hunks(hunks);
+        let result2 = MatchResult::Hunks(vec![]);
+        let combined = result1.combine_with(result2, &LogicalOperator::And);
+        assert!(!combined.is_match());
+    }
+
+    #[test]
+    fn test_combine_or_left_true() {
+        let result1 = MatchResult::Boolean(true);
+        let result2 = MatchResult::Boolean(false);
+        let combined = result1.combine_with(result2, &LogicalOperator::Or);
+        assert!(combined.is_match());
+        if let MatchResult::Boolean(true) = combined {
+            // expected
+        } else {
+            panic!("Expected Boolean(true)");
+        }
+    }
+
+    #[test]
+    fn test_combine_or_right_true() {
+        let result1 = MatchResult::Boolean(false);
+        let result2 = MatchResult::Boolean(true);
+        let combined = result1.combine_with(result2, &LogicalOperator::Or);
+        assert!(combined.is_match());
+    }
+
+    #[test]
+    fn test_combine_or_hunks_with_false() {
+        let hunks = vec![Range {
+            start_byte: 0,
+            end_byte: 10,
+            start_point: Point { row: 0, column: 0 },
+            end_point: Point { row: 0, column: 10 },
+        }];
+        let result1 = MatchResult::Hunks(hunks.clone());
+        let result2 = MatchResult::Boolean(false);
+        let combined = result1.combine_with(result2, &LogicalOperator::Or);
+        if let MatchResult::Hunks(h) = combined {
+            assert_eq!(h.len(), 1);
+        } else {
+            panic!("Expected Hunks");
+        }
+    }
+
+    #[test]
+    fn test_combine_or_false_with_hunks() {
+        let hunks = vec![Range {
+            start_byte: 0,
+            end_byte: 10,
+            start_point: Point { row: 0, column: 0 },
+            end_point: Point { row: 0, column: 10 },
+        }];
+        let result1 = MatchResult::Boolean(false);
+        let result2 = MatchResult::Hunks(hunks.clone());
+        let combined = result1.combine_with(result2, &LogicalOperator::Or);
+        if let MatchResult::Hunks(h) = combined {
+            assert_eq!(h.len(), 1);
+        } else {
+            panic!("Expected Hunks");
+        }
+    }
+
+    #[test]
+    fn test_file_context_sql_profile() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.sql");
+        fs::write(&file_path, "SELECT 1;").unwrap();
+
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+        assert!(context.sql_profile_key().is_none());
+
+        context.set_sql_profile_key("sqlpg");
+        assert_eq!(context.sql_profile_key(), Some("sqlpg"));
+    }
+
+    #[test]
+    fn test_combine_and_hunk_with_true() {
+        let hunks = vec![Range {
+            start_byte: 0,
+            end_byte: 10,
+            start_point: Point { row: 0, column: 0 },
+            end_point: Point { row: 0, column: 10 },
+        }];
+        let result1 = MatchResult::Hunks(hunks.clone());
+        let result2 = MatchResult::Boolean(true);
+        let combined = result1.combine_with(result2, &LogicalOperator::And);
+        if let MatchResult::Hunks(h) = combined {
+            assert_eq!(h.len(), 1);
+        } else {
+            panic!("Expected Hunks");
+        }
+    }
+
+    #[test]
+    fn test_combine_and_true_with_hunk() {
+        let hunks = vec![Range {
+            start_byte: 0,
+            end_byte: 10,
+            start_point: Point { row: 0, column: 0 },
+            end_point: Point { row: 0, column: 10 },
+        }];
+        let result1 = MatchResult::Boolean(true);
+        let result2 = MatchResult::Hunks(hunks.clone());
+        let combined = result1.combine_with(result2, &LogicalOperator::And);
+        if let MatchResult::Hunks(h) = combined {
+            assert_eq!(h.len(), 1);
+        } else {
+            panic!("Expected Hunks");
+        }
+    }
+
+    #[test]
+    fn test_combine_and_both_true() {
+        let result1 = MatchResult::Boolean(true);
+        let result2 = MatchResult::Boolean(true);
+        let combined = result1.combine_with(result2, &LogicalOperator::And);
+        if let MatchResult::Boolean(true) = combined {
+            // expected
+        } else {
+            panic!("Expected Boolean(true)");
+        }
+    }
+
+    #[test]
     fn test_combine_with_hunks_and() {
         let hunks1 = vec![Range {
             start_byte: 10,
@@ -368,5 +544,50 @@ mod tests {
             .to_sexp();
 
         assert_eq!(tree1_sexp, tree2_sexp);
+    }
+
+    #[test]
+    fn test_file_context_binary_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("binary.bin");
+        // Write binary content with null bytes
+        fs::write(&file_path, b"hello\x00world").unwrap();
+
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+        let content = context.get_content().unwrap();
+        // Binary files return empty content
+        assert_eq!(content, "");
+        assert!(context._skipped_content);
+    }
+
+    #[test]
+    fn test_file_context_secret_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("secrets.txt");
+        fs::write(&file_path, "aws_secret_access_key=AKIAIOSFODNN7EXAMPLE").unwrap();
+
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+        let content = context.get_content().unwrap();
+        // Secret files return empty content
+        assert_eq!(content, "");
+        assert!(context._skipped_content);
+    }
+
+    #[test]
+    fn test_file_context_tree_different_language() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn main() {}").unwrap();
+
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+        let language: tree_sitter::Language = LANGUAGE.into();
+
+        // First parse with rust
+        let _ = context.get_tree("rust", language.clone()).unwrap();
+        assert_eq!(context.tree_language_key, Some("rust".to_string()));
+
+        // Parse again with different key - should reparse
+        let _ = context.get_tree("other", language).unwrap();
+        assert_eq!(context.tree_language_key, Some("other".to_string()));
     }
 }

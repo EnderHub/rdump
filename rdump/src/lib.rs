@@ -47,6 +47,88 @@ pub mod limits {
         }
         Ok(canonical)
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::fs;
+        use tempfile::tempdir;
+
+        #[test]
+        fn test_is_probably_binary() {
+            assert!(is_probably_binary(&[0, 1, 2, 3]));
+            assert!(is_probably_binary(b"hello\x00world"));
+            assert!(!is_probably_binary(b"hello world"));
+            assert!(!is_probably_binary(b"fn main() {}"));
+        }
+
+        #[test]
+        fn test_maybe_contains_secret_private_key() {
+            assert!(maybe_contains_secret("-----BEGIN PRIVATE KEY-----"));
+            assert!(maybe_contains_secret("some text with -----begin private key----- in it"));
+        }
+
+        #[test]
+        fn test_maybe_contains_secret_aws() {
+            assert!(maybe_contains_secret("aws_secret_access_key=abcd1234"));
+            assert!(maybe_contains_secret("AWS_ACCESS_KEY_ID=AKIA..."));
+        }
+
+        #[test]
+        fn test_maybe_contains_secret_other() {
+            assert!(maybe_contains_secret("secret_key=mykey"));
+            assert!(maybe_contains_secret("secret-key=mykey"));
+            assert!(maybe_contains_secret("Authorization: Bearer token"));
+            assert!(maybe_contains_secret("eyJhbGciOiJIUzI1NiJ9")); // JWT
+            assert!(maybe_contains_secret("private_key: xyz"));
+        }
+
+        #[test]
+        fn test_maybe_contains_secret_safe() {
+            assert!(!maybe_contains_secret("fn main() { println!(\"Hello\"); }"));
+            assert!(!maybe_contains_secret("SELECT * FROM users;"));
+        }
+
+        #[test]
+        fn test_safe_canonicalize_within_root() {
+            let dir = tempdir().unwrap();
+            let root = dir.path().to_path_buf();
+            let subdir = root.join("subdir");
+            fs::create_dir(&subdir).unwrap();
+            let file = subdir.join("test.txt");
+            fs::write(&file, "content").unwrap();
+
+            let result = safe_canonicalize(&file, &root);
+            assert!(result.is_ok());
+            assert!(result.unwrap().starts_with(dunce::canonicalize(&root).unwrap()));
+        }
+
+        #[test]
+        fn test_safe_canonicalize_escapes_root() {
+            let dir = tempdir().unwrap();
+            let root = dir.path().join("project");
+            fs::create_dir(&root).unwrap();
+
+            // Create a file outside the root
+            let outside_file = dir.path().join("outside.txt");
+            fs::write(&outside_file, "content").unwrap();
+
+            let result = safe_canonicalize(&outside_file, &root);
+            assert!(result.is_err());
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("escapes root"));
+        }
+
+        #[test]
+        fn test_safe_canonicalize_nonexistent_path() {
+            let dir = tempdir().unwrap();
+            let root = dir.path().to_path_buf();
+            let nonexistent = root.join("nonexistent.txt");
+
+            let result = safe_canonicalize(&nonexistent, &root);
+            assert!(result.is_err());
+        }
+    }
 }
 pub mod parser;
 pub mod predicates;
@@ -261,5 +343,50 @@ pub fn run() -> Result<()> {
             run_lang(action)
         }
         Commands::Preset(args) => run_preset(args.action),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sql_dialect_flag_conversion_generic() {
+        let flag = SqlDialectFlag::Generic;
+        let dialect: CodeSqlDialect = flag.into();
+        assert_eq!(dialect, CodeSqlDialect::Generic);
+    }
+
+    #[test]
+    fn test_sql_dialect_flag_conversion_postgres() {
+        let flag = SqlDialectFlag::Postgres;
+        let dialect: CodeSqlDialect = flag.into();
+        assert_eq!(dialect, CodeSqlDialect::Postgres);
+    }
+
+    #[test]
+    fn test_sql_dialect_flag_conversion_mysql() {
+        let flag = SqlDialectFlag::Mysql;
+        let dialect: CodeSqlDialect = flag.into();
+        assert_eq!(dialect, CodeSqlDialect::Mysql);
+    }
+
+    #[test]
+    fn test_sql_dialect_flag_conversion_sqlite() {
+        let flag = SqlDialectFlag::Sqlite;
+        let dialect: CodeSqlDialect = flag.into();
+        assert_eq!(dialect, CodeSqlDialect::Sqlite);
+    }
+
+    #[test]
+    fn test_color_choice_default() {
+        let choice = ColorChoice::default();
+        assert_eq!(choice, ColorChoice::Auto);
+    }
+
+    #[test]
+    fn test_format_default() {
+        let format = Format::default();
+        assert_eq!(format, Format::Hunks);
     }
 }

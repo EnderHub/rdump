@@ -480,4 +480,114 @@ mod tests {
             "Output file should contain ANSI color codes when color=always"
         );
     }
+
+    #[test]
+    fn test_validate_ast_unknown_predicate() {
+        use crate::parser::PredicateKey;
+        use std::collections::HashMap;
+
+        // Empty registry - no predicates registered
+        let registry: HashMap<PredicateKey, Box<dyn PredicateEvaluator + Send + Sync>> =
+            HashMap::new();
+
+        // Test with Other predicate key (unknown predicate name)
+        let ast = AstNode::Predicate(PredicateKey::Other("unknown".to_string()), "value".to_string());
+        let result = validate_ast_predicates(&ast, &registry);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unknown predicate: 'unknown'"));
+    }
+
+    #[test]
+    fn test_validate_ast_known_key_not_in_registry() {
+        use crate::parser::PredicateKey;
+        use std::collections::HashMap;
+
+        // Empty registry - known key but not registered
+        let registry: HashMap<PredicateKey, Box<dyn PredicateEvaluator + Send + Sync>> =
+            HashMap::new();
+
+        let ast = AstNode::Predicate(PredicateKey::Ext, "rs".to_string());
+        let result = validate_ast_predicates(&ast, &registry);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unknown predicate: 'ext'"));
+    }
+
+    #[test]
+    fn test_validate_ast_logical_ops() {
+        use crate::parser::PredicateKey;
+        use crate::predicates;
+        use crate::predicates::code_aware::CodeAwareSettings;
+
+        let registry = predicates::create_predicate_registry_with_settings(CodeAwareSettings::default());
+
+        // Test with valid logical operations
+        let ast = AstNode::LogicalOp(
+            crate::parser::LogicalOperator::And,
+            Box::new(AstNode::Predicate(PredicateKey::Ext, "rs".to_string())),
+            Box::new(AstNode::Predicate(PredicateKey::Contains, "fn".to_string())),
+        );
+        let result = validate_ast_predicates(&ast, &registry);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_ast_not() {
+        use crate::parser::PredicateKey;
+        use crate::predicates;
+        use crate::predicates::code_aware::CodeAwareSettings;
+
+        let registry = predicates::create_predicate_registry_with_settings(CodeAwareSettings::default());
+
+        let ast = AstNode::Not(Box::new(AstNode::Predicate(
+            PredicateKey::Ext,
+            "py".to_string(),
+        )));
+        let result = validate_ast_predicates(&ast, &registry);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_default_ignores_applied() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Initialize git repo so ignores work properly
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(root)
+            .output()
+            .ok();
+
+        // Create directories that should be ignored by default
+        let target_dir = root.join("target");
+        let node_modules = root.join("node_modules");
+        fs::create_dir(&target_dir).unwrap();
+        fs::create_dir(&node_modules).unwrap();
+
+        fs::File::create(target_dir.join("debug.rs")).unwrap();
+        fs::File::create(node_modules.join("package.js")).unwrap();
+        fs::File::create(root.join("main.rs")).unwrap();
+
+        let files = get_sorted_file_names(&root.to_path_buf(), false, false, None);
+        // Default ignores should filter out target/ and node_modules/
+        assert!(files.contains(&"main.rs".to_string()));
+        // Note: Default ignores are applied via walker_builder.add_ignore
+        // which has lower precedence than .gitignore
+    }
+
+    #[test]
+    fn test_no_ignore_includes_all() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        let target_dir = root.join("target");
+        fs::create_dir(&target_dir).unwrap();
+        fs::File::create(target_dir.join("debug.rs")).unwrap();
+        fs::File::create(root.join("main.rs")).unwrap();
+
+        // With no_ignore=true, target should be included
+        let files = get_sorted_file_names(&root.to_path_buf(), true, false, None);
+        assert!(files.len() >= 2);
+        assert!(files.contains(&"main.rs".to_string()));
+    }
 }

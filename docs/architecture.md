@@ -146,26 +146,29 @@ graph TB
 
 | Language | Version | Extensions |
 |----------|---------|------------|
-| Rust | 0.24.0 | .rs |
+| Bash | 0.25.0 | .sh, .bash |
+| C | 0.24.1 | .c |
 | C# | 0.23.1 | .cs, .csx |
 | C++ | 0.23.4 | .cpp, .cc, .cxx, .hpp, .hh, .hxx |
-| Swift | 0.7.1 | .swift |
-| PHP | 0.24.2 | .php, .phtml |
-| Ruby | 0.23.1 | .rb |
-| Scala | 0.24.0 | .scala |
-| Bash | 0.25.0 | .sh, .bash |
-| HTML | 0.23.2 | .html, .htm |
 | CSS | 0.25.0 | .css |
-| Lua | 0.2.0 | .lua |
 | Elixir | 0.3.4 | .ex, .exs |
-| OCaml | 0.24.2 | .ml, .mli |
-| Zig | 1.1.2 | .zig |
+| Go | 0.25.0 | .go |
 | Haskell | 0.23.1 | .hs, .lhs |
-| Python | 0.25.0 | .py |
-| JavaScript | 0.23.1 | .js, .jsx, .mjs |
-| TypeScript | 0.23.2 | .ts, .tsx |
-| Go | 0.23.4 | .go |
+| HTML | 0.23.2 | .html |
 | Java | 0.23.5 | .java |
+| JavaScript | 0.25.0 | .js |
+| Lua | 0.2.0 | .lua |
+| OCaml | 0.24.2 | .ml, .mli |
+| PHP | 0.24.2 | .php |
+| Python | 0.25.0 | .py |
+| React (JSX/TSX) | 0.25.0 | .jsx, .tsx |
+| Ruby | 0.23.1 | .rb |
+| Rust | 0.24.0 | .rs |
+| Scala | 0.24.0 | .scala |
+| SQL | 0.3.11 | .sql (generic, postgres, mysql, sqlite) |
+| Swift | 0.7.1 | .swift |
+| TypeScript | 0.23.2 | .ts |
+| Zig | 1.1.2 | .zig |
 
 ---
 

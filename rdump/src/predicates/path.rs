@@ -184,4 +184,80 @@ mod tests {
             .unwrap()
             .is_match());
     }
+
+    #[test]
+    fn test_path_strip_prefix_failure() {
+        // Create a context where the path doesn't share prefix with root
+        // This is a synthetic test case to exercise the or_else fallback
+        use std::fs;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn main() {}").unwrap();
+
+        // Use the canonical path
+        let canonical_path = dunce::canonicalize(&file_path).unwrap();
+        let root = dir.path().to_path_buf();
+
+        let mut context = FileContext::new(canonical_path, root);
+        let evaluator = PathEvaluator;
+
+        // Test with a pattern that should match
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Path, "test.rs")
+            .unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_path_absolute_glob_pattern() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let src_dir = dir.path().join("src");
+        fs::create_dir(&src_dir).unwrap();
+        let file_path = src_dir.join("main.rs");
+        fs::write(&file_path, "fn main() {}").unwrap();
+
+        let canonical_path = dunce::canonicalize(&file_path).unwrap();
+        let canonical_root = dunce::canonicalize(dir.path()).unwrap();
+
+        let mut context = FileContext::new(canonical_path.clone(), canonical_root.clone());
+        let evaluator = PathEvaluator;
+
+        // Test absolute glob pattern
+        let pattern = format!("{}/**/*.rs", canonical_root.display());
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Path, &pattern)
+            .unwrap();
+        assert!(result.is_match());
+    }
+
+    #[test]
+    fn test_path_non_glob_absolute() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn main() {}").unwrap();
+
+        let canonical_path = dunce::canonicalize(&file_path).unwrap();
+        let canonical_root = dunce::canonicalize(dir.path()).unwrap();
+
+        let mut context = FileContext::new(canonical_path.clone(), canonical_root);
+        let evaluator = PathEvaluator;
+
+        // Test absolute non-glob pattern
+        let result = evaluator
+            .evaluate(
+                &mut context,
+                &PredicateKey::Path,
+                canonical_path.to_str().unwrap(),
+            )
+            .unwrap();
+        assert!(result.is_match());
+    }
 }

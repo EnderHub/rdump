@@ -21,6 +21,9 @@ pub(super) fn create_ocaml_profile() -> LanguageProfile {
     // Calls - approximate by identifiers.
     queries.insert(PredicateKey::Call, "(identifier) @match".to_string());
 
+    // Module definitions in OCaml
+    queries.insert(PredicateKey::Module, "(module_definition) @match".to_string());
+
     // Comments / Strings
     queries.insert(PredicateKey::Comment, "(comment) @match".to_string());
     queries.insert(PredicateKey::Str, "(string) @match".to_string());

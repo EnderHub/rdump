@@ -13,8 +13,9 @@ pub(super) fn create_rust_profile() -> LanguageProfile {
     let type_query = "(type_item name: (type_identifier) @match)";
     let impl_query = "(impl_item type: (type_identifier) @match)";
     let macro_query = "(macro_definition name: (identifier) @match)";
+    let module_query = "(mod_item name: (identifier) @match)";
 
-    let def_query = [struct_query, enum_query, trait_query, type_query].join("\n");
+    let def_query = [struct_query, enum_query, trait_query, type_query, module_query].join("\n");
 
     queries.insert(PredicateKey::Def, def_query);
     queries.insert(PredicateKey::Struct, struct_query.to_string());
@@ -23,6 +24,7 @@ pub(super) fn create_rust_profile() -> LanguageProfile {
     queries.insert(PredicateKey::Type, type_query.to_string());
     queries.insert(PredicateKey::Impl, impl_query.to_string());
     queries.insert(PredicateKey::Macro, macro_query.to_string());
+    queries.insert(PredicateKey::Module, module_query.to_string());
 
     // Query for standalone functions and methods in traits or impls.
     queries.insert(

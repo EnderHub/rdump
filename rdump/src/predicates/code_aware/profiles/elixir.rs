@@ -14,6 +14,8 @@ pub(super) fn create_elixir_profile() -> LanguageProfile {
     queries.insert(PredicateKey::Func, ident_query.to_string());
     queries.insert(PredicateKey::Call, ident_query.to_string());
     queries.insert(PredicateKey::Import, ident_query.to_string());
+    queries.insert(PredicateKey::Module, ident_query.to_string());
+    queries.insert(PredicateKey::Protocol, ident_query.to_string());
 
     // Comments / Strings.
     queries.insert(PredicateKey::Comment, "(comment) @match".to_string());

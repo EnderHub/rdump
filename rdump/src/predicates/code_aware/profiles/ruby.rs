@@ -23,6 +23,7 @@ pub(super) fn create_ruby_profile() -> LanguageProfile {
     );
     queries.insert(PredicateKey::Class, class_query.to_string());
     queries.insert(PredicateKey::Type, module_query.to_string());
+    queries.insert(PredicateKey::Module, module_query.to_string());
     queries.insert(PredicateKey::Func, func_query.to_string());
 
     // --- Imports ---

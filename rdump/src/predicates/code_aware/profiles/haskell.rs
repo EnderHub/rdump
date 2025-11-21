@@ -19,6 +19,9 @@ pub(super) fn create_haskell_profile() -> LanguageProfile {
     // Calls: approximate with variables.
     queries.insert(PredicateKey::Call, var_query.to_string());
 
+    // Module declarations in Haskell
+    queries.insert(PredicateKey::Module, "(module) @match".to_string());
+
     // Comments / Strings.
     queries.insert(PredicateKey::Comment, "(comment) @match".to_string());
     queries.insert(PredicateKey::Str, "(string) @match".to_string());
