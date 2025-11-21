@@ -140,40 +140,61 @@ function_query = "(function_item name: (identifier) @name)"
 
 **Problem:** rdump can only be used as a CLI tool. Cannot embed search functionality in other Rust programs.
 
-**Current limitations:**
-- `run_search()` prints to stdout, doesn't return results
-- No way to get `Vec<SearchResult>` programmatically
-- Args struct is CLI-coupled (color choice, output path, etc.)
+**Status:** Detailed analysis complete - see `docs/analysis/library-api.md`
 
-**Solution:** Separate query execution from output formatting.
+**Planned Implementation (15-20 hours):**
+- Streaming-first design with `search_iter()` for memory efficiency
+- Dual sync/async APIs (async behind feature flag)
+- Rich result types: `SearchResult`, `Match`, `SearchOptions`
+- CLI unchanged - internal refactoring only
 
 ```rust
-// Proposed library API
-use rdump::{search, SearchOptions, SearchResult};
+// Primary API (streaming)
+use rdump::{search_iter, SearchOptions};
 
-let results: Vec<SearchResult> = search(
-    "ext:rs & func:main",
-    Path::new("."),
-    SearchOptions::default(),
-)?;
-
+let results = search_iter("ext:rs & func:main", SearchOptions::default())?;
 for result in results {
     println!("{}: {} matches", result.path.display(), result.matches.len());
-    // Access result.content, result.ranges, etc.
 }
-```
 
-**Implementation:**
-1. Create `SearchResult` struct with path, matches, content
-2. Refactor `run_search` to call `search()` then format output
-3. Export clean public API without CLI concerns
-4. Consider streaming iterator for large result sets
+// Async API (feature-gated)
+let stream = search_async("ext:rs", options).await?;
+```
 
 **Use cases:**
 - Embed in IDE plugins
 - Build custom tooling on top of rdump
 - Integration with CI/CD pipelines
 - Use in test harnesses
+
+**Future enhancements (after core implementation):**
+
+1. **Progress Callbacks**
+   ```rust
+   pub fn search_with_progress<F>(
+       query: &str,
+       options: SearchOptions,
+       on_progress: F,  // (processed, total)
+   ) -> Result<Vec<SearchResult>>
+   ```
+
+2. **Custom Predicates**
+   ```rust
+   pub fn search_with_predicates(
+       query: &str,
+       options: SearchOptions,
+       custom_predicates: HashMap<String, Box<dyn PredicateEvaluator>>,
+   ) -> Result<Vec<SearchResult>>
+   ```
+
+3. **Builder Pattern**
+   ```rust
+   SearchBuilder::new("ext:rs & func:main")
+       .root("./src")
+       .preset("rust-tests")
+       .no_ignore(true)
+       .search()?
+   ```
 
 ---
 
