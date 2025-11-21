@@ -1,1 +1,0 @@
-- Fixed a bug in the React `custom/hook` predicate where the Tree-sitter query was matching all functions and variable declarations, not just custom hooks. The query was made more specific to only match custom hooks.

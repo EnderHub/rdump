@@ -1,7 +1,5 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs::File;
-use std::process::Command;
 use std::thread;
 use std::time::Duration;
 use tempfile::tempdir;
@@ -22,7 +20,7 @@ fn setup_test_dir() -> (tempfile::TempDir, std::path::PathBuf) {
 #[test]
 fn test_modified_after() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("modified:>1s");
 
@@ -35,7 +33,7 @@ fn test_modified_after() {
 #[test]
 fn test_modified_before() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("modified:<1s");
 
@@ -48,7 +46,7 @@ fn test_modified_before() {
 #[test]
 fn test_modified_exact_date() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     let now = chrono::Local::now().format("%Y-%m-%d").to_string();
     cmd.arg("search").arg(format!("modified:{}", now));
@@ -62,7 +60,7 @@ fn test_modified_exact_date() {
 #[test]
 fn test_invalid_date_format() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("modified:invalid-date");
 

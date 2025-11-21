@@ -1,10 +1,7 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
-
 #[test]
 fn test_distinguishes_function_call_from_definition() {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")
@@ -20,7 +17,7 @@ fn test_distinguishes_function_call_from_definition() {
 
 #[test]
 fn test_and_combination_of_hunk_and_boolean_predicates() {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")
@@ -36,7 +33,7 @@ fn test_and_combination_of_hunk_and_boolean_predicates() {
 
 #[test]
 fn test_or_combination_with_negation() {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")
@@ -54,7 +51,7 @@ fn test_or_combination_with_negation() {
 
 #[test]
 fn test_graceful_failure_on_non_existent_root_path() {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg(".")
         .arg("--root")
@@ -68,7 +65,7 @@ fn test_graceful_failure_on_non_existent_root_path() {
 
 #[test]
 fn test_behavior_on_unknown_predicate() {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     // Search for a predicate that doesn't exist.
     cmd.arg("search")
         .arg("--root")
@@ -86,7 +83,7 @@ fn test_negation_of_hunk_predicate_produces_boolean_match() {
     // Case 1: Negating a predicate that DOES match the file.
     // The file code.rs contains `struct MyStruct`.
     // `!struct:MyStruct` should evaluate to false for this file.
-    let mut cmd1 = Command::cargo_bin("rdump").unwrap();
+    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd1.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")
@@ -97,7 +94,7 @@ fn test_negation_of_hunk_predicate_produces_boolean_match() {
     // Case 2: Negating a predicate that does NOT match the file.
     // The file code.rs does NOT contain `struct NonExistent`.
     // `!struct:NonExistent` should evaluate to true for this file.
-    let mut cmd2 = Command::cargo_bin("rdump").unwrap();
+    let mut cmd2 = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd2.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")
@@ -110,7 +107,7 @@ fn test_negation_of_hunk_predicate_produces_boolean_match() {
 
 #[test]
 fn test_empty_contains_predicate_matches_all_files() {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")
@@ -127,7 +124,7 @@ fn test_empty_contains_predicate_matches_all_files() {
 
 #[test]
 fn test_empty_name_predicate_fails_gracefully() {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")

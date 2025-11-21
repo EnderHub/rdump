@@ -1,7 +1,4 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
-
 mod common;
 use common::setup_test_project;
 
@@ -9,7 +6,7 @@ use common::setup_test_project;
 fn test_def_finds_python_class() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search").arg("def:Helper & ext:py");
 
@@ -24,7 +21,7 @@ fn test_def_finds_python_class() {
 fn test_func_finds_python_function() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search").arg("func:run_helper");
 
@@ -39,7 +36,7 @@ fn test_func_finds_python_function() {
 fn test_import_finds_python_import() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search").arg("import:os & ext:py");
 
@@ -53,8 +50,7 @@ fn test_import_finds_python_import() {
 #[test]
 fn test_comment_and_class_predicates_python() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("comment:FIXME & class:Helper")
@@ -66,8 +62,7 @@ fn test_comment_and_class_predicates_python() {
 #[test]
 fn test_str_predicate_python() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("str:/tmp/data")
@@ -79,8 +74,7 @@ fn test_str_predicate_python() {
 #[test]
 fn test_call_predicate_python() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("call:run_helper | call:do_setup")
@@ -93,8 +87,7 @@ fn test_call_predicate_python() {
 #[test]
 fn test_def_not_found_python() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("def:NonExistent & ext:py")

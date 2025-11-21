@@ -95,7 +95,7 @@ impl FileContext {
             })?;
             let tree = parser
                 .parse(content, None)
-                .ok_or_else(|| anyhow!("Tree-sitter failed to parse {}", path_display))?;
+                .ok_or_else(|| anyhow!("Tree-sitter failed to parse {path_display}"))?;
             self.tree = Some(tree);
         }
         Ok(self.tree.as_ref().unwrap())

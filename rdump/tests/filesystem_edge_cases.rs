@@ -1,10 +1,8 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
-use std::process::Command;
 use tempfile::tempdir;
 
 #[test]
@@ -19,7 +17,7 @@ fn test_search_does_not_follow_symlinks_by_default() {
     let symlink_path = root.join("link.txt");
     symlink(&target_file, &symlink_path).unwrap();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     cmd.arg("search")
         .arg("--format=paths")
@@ -43,7 +41,7 @@ fn test_search_handles_invalid_utf8_file_gracefully() {
     file.write_all(&[0x41, 0x42, 0xC3, 0x28, 0x43, 0x44])
         .unwrap();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     // This query forces the tool to read the file content.
     cmd.arg("search").arg("contains:any");

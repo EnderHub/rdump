@@ -1,15 +1,11 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
-
 mod common;
 use common::setup_test_project;
 
 #[test]
 fn test_struct_predicate_go() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("struct:Server & ext:go")
@@ -22,8 +18,7 @@ fn test_struct_predicate_go() {
 #[test]
 fn test_func_and_call_predicates_go() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("func:NewServer | call:NewServer")
@@ -38,8 +33,7 @@ fn test_func_and_call_predicates_go() {
 #[test]
 fn test_import_and_comment_predicates_go() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("import:fmt & comment:\"HTTP server\"")
@@ -51,8 +45,7 @@ fn test_import_and_comment_predicates_go() {
 #[test]
 fn test_struct_not_found_go() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("struct:NonExistent & ext:go")

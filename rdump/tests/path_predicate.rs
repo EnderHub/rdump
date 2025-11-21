@@ -1,7 +1,5 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
-use std::process::Command;
 use tempfile::tempdir;
 
 #[test]
@@ -14,7 +12,7 @@ fn test_path_glob_respects_directory_boundaries() {
     fs::File::create(sub_dir.join("deep_file.rs")).unwrap();
     fs::File::create(root.join("root_file.rs")).unwrap();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     // FIX: Use a combination of `in` and `name` to correctly express "files in this directory".
     // `in:.` constrains the search to the current directory (and is now non-recursive).
@@ -39,7 +37,7 @@ fn test_path_globstar_crosses_directory_boundaries() {
     fs::File::create(sub_dir.join("deep_file.rs")).unwrap();
     fs::File::create(root.join("root_file.rs")).unwrap();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     // This globstar (**) should match files at any depth.
     cmd.arg("search").arg("--format=paths").arg("path:**/*.rs");

@@ -49,7 +49,7 @@ pub fn run_preset(action: PresetAction) -> Result<()> {
                 println!("Removing preset '{name}'...");
                 config::save_config(&config)?;
             } else {
-                return Err(anyhow!("Preset '{}' not found in global config.", name));
+                return Err(anyhow!("Preset '{name}' not found in global config."));
             }
         }
     }

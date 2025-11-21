@@ -37,6 +37,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 ///
 /// Available fixtures:
 /// - "rust_project" - Standard Rust project structure
+/// - "c_project" - C sources exercising tree-sitter predicates
 /// - "python_project" - Python with various patterns
 /// - "react_project" - React/TypeScript components
 /// - "mixed_project" - Multiple languages

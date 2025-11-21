@@ -1,10 +1,8 @@
 // In rdump/tests/extended_cli.rs
 
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
 use std::io::Write;
-use std::process::Command;
 use tempfile::tempdir;
 
 /// Helper to create a directory with a few files for testing complex queries.
@@ -37,7 +35,7 @@ fn setup_query_test_dir() -> (tempfile::TempDir, std::path::PathBuf) {
 fn test_complex_query_with_grouping() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_query_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     // Query: (contains:"main" or contains:"utility") and ext:rs
     cmd.arg("search")
@@ -56,7 +54,7 @@ fn test_complex_query_with_grouping() -> Result<(), Box<dyn std::error::Error>> 
 fn test_name_predicate_case_insensitivity() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_query_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     // Query: name should match "readme.md" case-insensitively by default
     cmd.arg("search").arg("name:readme.md");
@@ -72,7 +70,7 @@ fn test_name_predicate_case_insensitivity() -> Result<(), Box<dyn std::error::Er
 fn test_matches_predicate_with_regex() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_query_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     // Query: matches a regex pattern for "hello" or "world"
     cmd.arg("search").arg("matches:\"(hello|world)\"");
@@ -91,7 +89,7 @@ fn test_size_predicate() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_query_test_dir();
 
     // Test for files greater than 40 bytes
-    let mut cmd_gt = Command::cargo_bin("rdump")?;
+    let mut cmd_gt = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_gt.current_dir(&root);
     cmd_gt.arg("search").arg("size:>40b").arg("--format=paths");
 
@@ -105,7 +103,7 @@ fn test_size_predicate() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Test for files less than 40 bytes
-    let mut cmd_lt = Command::cargo_bin("rdump")?;
+    let mut cmd_lt = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_lt.current_dir(&root);
     cmd_lt.arg("search").arg("size:<40b").arg("--format=paths");
 
@@ -125,7 +123,7 @@ fn test_size_predicate() -> Result<(), Box<dyn std::error::Error>> {
 fn test_complex_predicate_combination() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_query_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     // Query: (name:main.rs or name:utils.rs) and contains:hello
     cmd.arg("search")

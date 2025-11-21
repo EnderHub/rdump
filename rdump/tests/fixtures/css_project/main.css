@@ -1,0 +1,10 @@
+@import url("reset.css");
+
+.button {
+  color: #fff;
+  background: #333;
+}
+
+#app {
+  margin: 0 auto;
+}

@@ -299,3 +299,5 @@ To propose a new feature:
 Priority is based on:
 - User demand
 - Impact on core use cases
+
+- Add Kotlin semantic support once a tree-sitter-kotlin crate compatible with tree-sitter 0.25.x exists (or vendor a 0.25-compatible binding). Current crate 0.3.8 depends on tree-sitter 0.22.x and conflicts with our 0.25.8 stack; investigate when a newer release appears or consider vendoring a generated binding. Marked as potentially unmaintained; re-evaluate availability before implementation.

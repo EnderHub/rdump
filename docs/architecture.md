@@ -1,8 +1,8 @@
 # rdump Architecture Document
 
-**Version:** 3.0
+**Version:** 3.1
 **Status:** Complete
-**Last Updated:** 2024-11-20
+**Last Updated:** 2025-11-20
 
 ---
 
@@ -129,29 +129,43 @@ graph TB
 | Category | Technology | Version | Purpose |
 |----------|------------|---------|---------|
 | Language | Rust | Edition 2021 | Primary language |
-| CLI | clap | 4.5.4 | Argument parsing |
-| Parser | pest | 2.7.10 | RQL grammar |
-| Parallelism | rayon | 1.10.0 | Multi-core execution |
-| File Discovery | ignore | 0.4.22 | Directory traversal |
-| Code Parsing | tree-sitter | 0.22.6 | AST generation |
-| Highlighting | syntect | 5.2.0 | Syntax highlighting |
-| Regex | regex | 1.10.4 | Pattern matching |
-| Serialization | serde | 1.0.203 | Data serialization |
-| JSON | serde_json | 1.0.117 | JSON output |
-| Configuration | toml | 0.8.12 | Config parsing |
-| Errors | anyhow | 1.0.86 | Error handling |
-| Lazy Init | once_cell | 1.19.0 | Thread-safe lazy statics |
+| CLI | clap | 4.5.49 | Argument parsing |
+| Parser | pest | 2.8.3 | RQL grammar |
+| Parallelism | rayon | 1.11.0 | Multi-core execution |
+| File Discovery | ignore | 0.4.25 | Directory traversal |
+| Code Parsing | tree-sitter | 0.25.10 | AST generation |
+| Highlighting | syntect | 5.3.0 | Syntax highlighting |
+| Regex | regex | 1.12.2 | Pattern matching |
+| Serialization | serde | 1.0.228 | Data serialization |
+| JSON | serde_json | 1.0.145 | JSON output |
+| Configuration | toml | 0.9.8 | Config parsing |
+| Errors | anyhow | 1.0.100 | Error handling |
+| Lazy Init | once_cell | 1.20.0 | Thread-safe lazy statics |
 
 ### Tree-sitter Grammars
 
 | Language | Version | Extensions |
 |----------|---------|------------|
-| Rust | 0.21.0 | .rs |
-| Python | 0.21.0 | .py |
-| JavaScript | 0.21.0 | .js, .jsx, .mjs |
-| TypeScript | 0.21.0 | .ts, .tsx |
-| Go | 0.21.0 | .go |
-| Java | 0.21.0 | .java |
+| Rust | 0.24.0 | .rs |
+| C# | 0.23.1 | .cs, .csx |
+| C++ | 0.23.4 | .cpp, .cc, .cxx, .hpp, .hh, .hxx |
+| Swift | 0.7.1 | .swift |
+| PHP | 0.24.2 | .php, .phtml |
+| Ruby | 0.23.1 | .rb |
+| Scala | 0.24.0 | .scala |
+| Bash | 0.25.0 | .sh, .bash |
+| HTML | 0.23.2 | .html, .htm |
+| CSS | 0.25.0 | .css |
+| Lua | 0.2.0 | .lua |
+| Elixir | 0.3.4 | .ex, .exs |
+| OCaml | 0.24.2 | .ml, .mli |
+| Zig | 1.1.2 | .zig |
+| Haskell | 0.23.1 | .hs, .lhs |
+| Python | 0.25.0 | .py |
+| JavaScript | 0.23.1 | .js, .jsx, .mjs |
+| TypeScript | 0.23.2 | .ts, .tsx |
+| Go | 0.23.4 | .go |
+| Java | 0.23.5 | .java |
 
 ---
 
@@ -687,6 +701,7 @@ cargo test rust_search        # Rust semantic tests
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.1 | 2025-11-20 | Dependency stack refresh (core crates + tree-sitter grammar versions) |
 | 3.0 | 2024-11-20 | Simplified to types and signatures |
 | 2.0 | 2024-11-20 | Extensive expansion with implementations |
 | 1.0 | 2024-11-20 | Initial architecture document |

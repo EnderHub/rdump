@@ -160,7 +160,7 @@ pub fn parse_query(query: &str) -> Result<AstNode> {
             let expression = pairs.next().unwrap().into_inner().next().unwrap();
             build_ast_from_expression_pairs(expression.into_inner())
         }
-        Err(e) => Err(anyhow!("Invalid query syntax:\n{}", e)),
+        Err(e) => Err(anyhow!("Invalid query syntax:\n{e}")),
     }
 }
 
@@ -170,7 +170,7 @@ fn build_ast_from_expression_pairs(pairs: Pairs<Rule>) -> Result<AstNode> {
     if pairs
         .clone()
         .last()
-        .map_or(false, |p| matches!(p.as_rule(), Rule::AND | Rule::OR))
+        .is_some_and(|p| matches!(p.as_rule(), Rule::AND | Rule::OR))
     {
         return Err(anyhow!(
             "Invalid query syntax: query cannot end with an operator."
@@ -212,7 +212,7 @@ fn build_ast_from_term(pair: Pair<Rule>) -> Result<AstNode> {
                 let mut predicate_parts = inner_predicate.into_inner();
                 let key_pair = predicate_parts
                     .next()
-                    .ok_or_else(|| anyhow!("Missing key in predicate for rule {:?}", rule))?;
+                    .ok_or_else(|| anyhow!("Missing key in predicate for rule {rule:?}"))?;
                 let value_pair = predicate_parts.next().ok_or_else(|| {
                     anyhow!("Missing value in predicate for key '{}'", key_pair.as_str())
                 })?;

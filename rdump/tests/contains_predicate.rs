@@ -1,17 +1,13 @@
 // In rdump/tests/contains_predicate.rs
 
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
-
 mod common;
 use common::setup_test_project;
 
 #[test]
 fn test_contains_simple() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("contains:\"main function\"")
@@ -24,8 +20,7 @@ fn test_contains_simple() {
 #[test]
 fn test_contains_case_insensitivity() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("contains:\"MAIN FUNCTION\"")
@@ -38,8 +33,7 @@ fn test_contains_case_insensitivity() {
 #[test]
 fn test_contains_no_results() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("contains:\"this should not be found\"")
@@ -51,8 +45,7 @@ fn test_contains_no_results() {
 #[test]
 fn test_contains_with_other_predicates() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("contains:\"main function\" and ext:rs")

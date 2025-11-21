@@ -1,7 +1,4 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
-
 mod common;
 use common::setup_test_project;
 
@@ -9,7 +6,7 @@ use common::setup_test_project;
 fn test_def_finds_struct_in_correct_file() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search").arg("def:Cli"); // Query for the Cli struct
 
@@ -24,7 +21,7 @@ fn test_def_finds_struct_in_correct_file() {
 fn test_def_finds_enum_in_correct_file() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search").arg("def:Role"); // Query for the Role enum
 
@@ -40,7 +37,7 @@ fn test_def_with_ext_predicate_and_paths_format() {
     let dir = setup_test_project();
     let root = dir.path();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     cmd.arg("search").arg("def:User & ext:rs");
     cmd.arg("--format=paths");
@@ -57,7 +54,7 @@ fn test_def_with_ext_predicate_and_paths_format() {
 fn test_def_returns_no_matches_for_non_existent_item() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search").arg("def:NonExistent");
 
@@ -69,7 +66,7 @@ fn test_def_returns_no_matches_for_non_existent_item() {
 fn test_def_does_not_match_in_non_rust_files() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     // The README.md contains the words "Role" and "User"
     cmd.arg("search").arg("def:Role | def:User");
@@ -85,7 +82,7 @@ fn test_def_does_not_match_in_non_rust_files() {
 fn test_func_finds_standalone_function() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search").arg("func:main");
 
@@ -99,7 +96,7 @@ fn test_func_finds_standalone_function() {
 fn test_func_finds_impl_method() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search").arg("func:new");
 
@@ -113,7 +110,7 @@ fn test_func_finds_impl_method() {
 fn test_import_finds_use_statement() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search")
         .arg("--format=markdown")
@@ -130,7 +127,7 @@ fn test_import_finds_use_statement() {
 fn test_logical_or_across_files() {
     let dir = setup_test_project();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search").arg("func:main | import:serde");
 
@@ -143,8 +140,7 @@ fn test_logical_or_across_files() {
 #[test]
 fn test_comment_predicate_rust() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("comment:TODO")
@@ -157,8 +153,7 @@ fn test_comment_predicate_rust() {
 #[test]
 fn test_str_predicate_rust() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("str:\"Hello, world!\"")
@@ -170,8 +165,7 @@ fn test_str_predicate_rust() {
 #[test]
 fn test_type_and_struct_predicates_rust() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("type:UserId & struct:User")
@@ -184,8 +178,7 @@ fn test_type_and_struct_predicates_rust() {
 #[test]
 fn test_call_predicate_rust() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("call:println & ext:rs")
@@ -200,8 +193,7 @@ fn test_logical_operators_with_hunks() {
     let dir = setup_test_project();
     // Query: find the file that defines the `Cli` struct AND ALSO contains a `TODO` comment.
     // This should only match main.rs
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("--format=hunks")
@@ -217,8 +209,7 @@ fn test_negation_with_hunks() {
     let dir = setup_test_project();
     // Query: find files with `User` struct but NOT containing `TODO`
     // This should only match lib.rs
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("--format=hunks")
@@ -236,7 +227,7 @@ fn test_and_of_semantic_predicates() {
     // Query: find files with a `struct` AND a `func`
     // This should only match lib.rs (User struct, new function)
     // and main.rs (Cli struct, main function)
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(dir.path());
     cmd.arg("search");
     cmd.arg("--format=paths");
@@ -257,8 +248,7 @@ fn test_and_of_semantic_predicates() {
 #[test]
 fn test_func_not_found() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("func:non_existent_function")

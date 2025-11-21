@@ -92,13 +92,13 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
             let preset_query = config
                 .presets
                 .get(preset_name)
-                .ok_or_else(|| anyhow!("Preset '{}' not found", preset_name))?;
-            preset_queries.push(format!("({})", preset_query));
+                .ok_or_else(|| anyhow!("Preset '{preset_name}' not found"))?;
+            preset_queries.push(format!("({preset_query})"));
         }
         let all_presets = preset_queries.join(" & ");
 
         if let Some(q) = final_query {
-            final_query = Some(format!("({}) & ({})", all_presets, q));
+            final_query = Some(format!("({all_presets}) & ({q})"));
         } else {
             final_query = Some(all_presets);
         }
@@ -293,7 +293,7 @@ fn get_candidate_files(
             }
             Err(e) => {
                 // Log and continue for walk errors (broken symlinks, permission issues, etc.).
-                eprintln!("Warning: could not access entry: {}", e);
+                eprintln!("Warning: could not access entry: {e}");
             }
         }
     }
@@ -310,7 +310,7 @@ fn validate_ast_predicates(
             if !registry.contains_key(key) {
                 // The parser wraps unknown keys in `Other`, so we can check for that.
                 if let PredicateKey::Other(name) = key {
-                    return Err(anyhow!("Unknown predicate: '{}'", name));
+                    return Err(anyhow!("Unknown predicate: '{name}'"));
                 }
                 // This case handles if a known key is somehow not in the registry.
                 return Err(anyhow!("Unknown predicate: '{}'", key.as_ref()));

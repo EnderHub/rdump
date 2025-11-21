@@ -1,15 +1,11 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
-
 mod common;
 use common::setup_test_project;
 
 #[test]
 fn test_component_predicate_finds_functional_component() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("component:App & ext:tsx")
@@ -21,8 +17,7 @@ fn test_component_predicate_finds_functional_component() {
 #[test]
 fn test_component_predicate_finds_arrow_function_component() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("component:Button & ext:jsx")
@@ -34,8 +29,7 @@ fn test_component_predicate_finds_arrow_function_component() {
 #[test]
 fn test_element_predicate_finds_html_element() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("element:h1 & ext:tsx")
@@ -47,8 +41,7 @@ fn test_element_predicate_finds_html_element() {
 #[test]
 fn test_element_predicate_finds_component_element() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("element:Button & ext:tsx")
@@ -60,8 +53,7 @@ fn test_element_predicate_finds_component_element() {
 #[test]
 fn test_hook_predicate_finds_built_in_hook() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("hook:useState")
@@ -75,8 +67,7 @@ fn test_hook_predicate_finds_built_in_hook() {
 #[test]
 fn test_hook_predicate_finds_custom_hook_call() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("hook:useAuth")
@@ -88,8 +79,7 @@ fn test_hook_predicate_finds_custom_hook_call() {
 #[test]
 fn test_customhook_predicate_finds_hook_definition() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("customhook:useAuth")
@@ -103,8 +93,7 @@ fn test_customhook_predicate_finds_hook_definition() {
 #[test]
 fn test_prop_predicate_finds_prop() {
     let dir = setup_test_project();
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("prop:onClick")
@@ -118,8 +107,7 @@ fn test_prop_predicate_finds_prop() {
 fn test_react_and_logic_across_predicates() {
     let dir = setup_test_project();
     // Find a Button element that is also passed a `disabled` prop.
-    Command::cargo_bin("rdump")
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
         .arg("search")
         .arg("element:Button & prop:disabled")

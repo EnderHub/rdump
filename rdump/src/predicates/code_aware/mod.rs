@@ -79,6 +79,8 @@ impl PredicateEvaluator for CodeAwareEvaluator {
                     PredicateKey::Hook | PredicateKey::CustomHook => {
                         value == "." || captured_text == value
                     }
+                    // Calls: allow substring match since callee may include arguments/qualifiers.
+                    PredicateKey::Call => captured_text.contains(value),
                     // Definition-based predicates require an exact match on the identifier, unless a wildcard is used.
                     _ => value == "." || captured_text == value,
                 };

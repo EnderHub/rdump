@@ -1,7 +1,5 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
-use std::process::Command;
 use tempfile::tempdir;
 
 #[test]
@@ -14,7 +12,7 @@ fn test_formatter_merges_overlapping_hunks() {
     let content = "line 1\nline 2 (match 1)\nline 3\nline 4 (match 2)\nline 5\n";
     fs::write(&file_path, content).unwrap();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     // Query for "match", with a context of 1 line (-C 1).
     // The context for "match 1" is lines 1-3.

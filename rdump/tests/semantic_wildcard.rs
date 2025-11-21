@@ -1,10 +1,7 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
-
 #[test]
 fn test_semantic_wildcard_matches_any_struct() {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")
@@ -23,7 +20,7 @@ fn test_semantic_wildcard_matches_any_struct() {
 
 #[test]
 fn test_semantic_wildcard_matches_any_function() {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")

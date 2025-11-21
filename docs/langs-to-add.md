@@ -1,0 +1,1 @@
+- SQL — cross-language DB work; tree-sitter-sql gives semantic query support (there are MySQL/PG variants too).

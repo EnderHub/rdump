@@ -1,6 +1,5 @@
 // In rdump/tests/ignore.rs
 
-use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
 use std::io::Write;
@@ -21,7 +20,7 @@ fn test_rdumpignore() -> Result<(), Box<dyn std::error::Error>> {
     // Create a .rdumpignore file
     fs::File::create(root.join(".rdumpignore"))?.write_all(b"ignored.txt")?;
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     cmd.arg("search")
         .arg("contains:\"This should be ignored.\"");
@@ -39,7 +38,7 @@ fn test_rdumpignore_excludes_matching_pattern() -> Result<(), Box<dyn std::error
     fs::File::create(root.join("app.log"))?.write_all(b"log content")?;
     fs::File::create(root.join(".rdumpignore"))?.write_all(b"*.log")?;
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     cmd.arg("search").arg("ext:log");
 
@@ -67,7 +66,7 @@ fn test_rdumpignore_unignore_overrides_gitignore() -> Result<(), Box<dyn std::er
     fs::File::create(root.join(".gitignore"))?.write_all(b"*.log")?;
     fs::File::create(root.join(".rdumpignore"))?.write_all(b"!main.log")?;
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     cmd.arg("search").arg("ext:log");
 
@@ -90,7 +89,7 @@ fn test_rdumpignore_unignore_overrides_default_ignores() -> Result<(), Box<dyn s
 
     fs::File::create(root.join(".rdumpignore"))?.write_all(b"!target/")?;
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
     cmd.arg("search").arg("path:build_info");
 

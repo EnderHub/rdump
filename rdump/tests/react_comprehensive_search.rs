@@ -1,11 +1,9 @@
-use assert_cmd::prelude::*;
+use assert_cmd::Command;
 use predicates::prelude::*;
-use std::process::Command;
-
 // This test suite queries the `insane_test_bed/react_comprehensive.tsx` file.
 
 fn rdump_search() -> Command {
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")
@@ -125,7 +123,7 @@ fn test_finds_namespaced_svg_element() {
 #[test]
 fn test_negation_of_react_predicate() {
     // Find files that are TSX but DO NOT define a 'ClassComponent'
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("search")
         .arg("--root")
         .arg("../insane_test_bed")

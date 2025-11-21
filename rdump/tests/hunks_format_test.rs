@@ -1,8 +1,6 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
 use std::io::Write;
-use std::process::Command;
 use tempfile::tempdir;
 
 fn setup_hunks_test_dir() -> (tempfile::TempDir, std::path::PathBuf) {
@@ -24,7 +22,7 @@ fn setup_hunks_test_dir() -> (tempfile::TempDir, std::path::PathBuf) {
 fn test_hunks_format() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_hunks_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search")
         .arg("contains:'line 3'")

@@ -1,10 +1,9 @@
 // In rdump/tests/cli.rs
 
-use assert_cmd::prelude::*; // Adds methods on commands
 use predicates::prelude::*; // Used for writing assertions
 use std::fs;
 use std::io::Write;
-use std::process::Command; // Lets us run other programs
+// Lets us run other programs
 use tempfile::tempdir; // Create temporary directories for testing
 
 // --- Helper Functions ---
@@ -35,7 +34,7 @@ fn setup_test_dir() -> (tempfile::TempDir, std::path::PathBuf) {
 
 #[test]
 fn test_help_message() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("--help");
     cmd.assert()
         .success()
@@ -52,7 +51,7 @@ fn test_help_message() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_version_message() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("--version");
     cmd.assert()
         .success()
@@ -62,7 +61,7 @@ fn test_version_message() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_no_args_fails() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.assert()
         .failure() // Should fail because a subcommand is required
         .stderr(predicate::str::contains("Usage: rdump <COMMAND>"));
@@ -74,7 +73,7 @@ fn test_search_simple_predicate_succeeds() -> Result<(), Box<dyn std::error::Err
     // Setup a temporary directory with our test files
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root); // Run the command *from* our test directory
     cmd.arg("search").arg("ext:rs");
 
@@ -91,7 +90,7 @@ fn test_search_simple_predicate_succeeds() -> Result<(), Box<dyn std::error::Err
 fn test_search_no_results() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("ext:java"); // No java files exist
 
@@ -103,7 +102,7 @@ fn test_search_no_results() -> Result<(), Box<dyn std::error::Error>> {
 fn test_search_invalid_query_fails() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("ext:"); // Query with a missing value
 
@@ -116,7 +115,7 @@ fn test_search_invalid_query_fails() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_lang_describe_command() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("lang").arg("describe").arg("rust");
 
     // Assert that the output contains the key sections for a supported language.
@@ -176,7 +175,7 @@ fn test_file_discovery_flags() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_advanced_test_dir();
 
     // Test --hidden flag
-    let mut cmd_hidden = Command::cargo_bin("rdump")?;
+    let mut cmd_hidden = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_hidden.current_dir(&root);
     cmd_hidden.arg("search").arg("--hidden").arg("path:hidden");
     cmd_hidden
@@ -185,7 +184,7 @@ fn test_file_discovery_flags() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains(".hidden_config"));
 
     // Test --no-ignore flag
-    let mut cmd_no_ignore = Command::cargo_bin("rdump")?;
+    let mut cmd_no_ignore = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_no_ignore.current_dir(&root);
     cmd_no_ignore
         .arg("search")
@@ -197,7 +196,7 @@ fn test_file_discovery_flags() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains("latest.log"));
 
     // Test --max-depth flag
-    let mut cmd_depth = Command::cargo_bin("rdump")?;
+    let mut cmd_depth = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_depth.current_dir(&root);
     // This should find `main.rs` but not `src/lib.rs`
     cmd_depth
@@ -219,7 +218,7 @@ fn test_output_formatting_flags() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_advanced_test_dir();
 
     // Test --format paths
-    let mut cmd_paths = Command::cargo_bin("rdump")?;
+    let mut cmd_paths = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_paths.current_dir(&root);
     cmd_paths
         .arg("search")
@@ -231,7 +230,7 @@ fn test_output_formatting_flags() -> Result<(), Box<dyn std::error::Error>> {
     cmd_paths.assert().success().stdout(expected_paths);
 
     // Test --format json
-    let mut cmd_json = Command::cargo_bin("rdump")?;
+    let mut cmd_json = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_json.current_dir(&root);
     cmd_json
         .arg("search")
@@ -246,7 +245,7 @@ fn test_output_formatting_flags() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains(r#""content": "fn main() {}""#));
 
     // Test --format cat with --line-numbers (no color, since it's a pipe)
-    let mut cmd_cat = Command::cargo_bin("rdump")?;
+    let mut cmd_cat = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_cat.current_dir(&root);
     cmd_cat
         .arg("search")
@@ -261,7 +260,7 @@ fn test_output_formatting_flags() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains("\x1b[").not()); // Check for NO ANSI color codes
 
     // Test --color=always to force highlighting
-    let mut cmd_color = Command::cargo_bin("rdump")?;
+    let mut cmd_color = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_color.current_dir(&root);
     cmd_color
         .arg("search")
@@ -273,7 +272,7 @@ fn test_output_formatting_flags() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains("\x1b[")); // Check FOR ANSI color codes
 
     // Test --find shorthand flag
-    let mut cmd_find = Command::cargo_bin("rdump")?;
+    let mut cmd_find = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_find.current_dir(&root);
     cmd_find.arg("search").arg("--find").arg("path:main.rs");
     // We can't know the exact permissions/date, but we can check for the structure
@@ -317,7 +316,7 @@ fn test_preset_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. List when no presets exist.
     // CRITICAL FIX: Run this command from the clean project_dir.
-    let mut cmd_list1 = Command::cargo_bin("rdump")?;
+    let mut cmd_list1 = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_list1.env("RDUMP_TEST_CONFIG_DIR", &fake_home);
     cmd_list1.current_dir(&project_dir); // <--- THIS IS THE FIX
     cmd_list1.arg("preset").arg("list");
@@ -327,7 +326,7 @@ fn test_preset_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains("No presets found."));
 
     // 2. Add a preset. This command is not affected by current_dir, but it's good practice.
-    let mut cmd_add = Command::cargo_bin("rdump")?;
+    let mut cmd_add = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_add.env("RDUMP_TEST_CONFIG_DIR", &fake_home);
     cmd_add.current_dir(&project_dir); // Add for consistency
     cmd_add
@@ -343,7 +342,7 @@ fn test_preset_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     assert!(content.contains(r#"rust-files = "ext:rs""#));
 
     // 3. List again to see the new preset.
-    let mut cmd_list2 = Command::cargo_bin("rdump")?;
+    let mut cmd_list2 = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_list2.env("RDUMP_TEST_CONFIG_DIR", &fake_home);
     cmd_list2.current_dir(&project_dir); // Add for consistency
     cmd_list2.arg("preset").arg("list");
@@ -353,7 +352,7 @@ fn test_preset_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains("rust-files : ext:rs"));
 
     // 4. Remove the preset.
-    let mut cmd_remove = Command::cargo_bin("rdump")?;
+    let mut cmd_remove = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_remove.env("RDUMP_TEST_CONFIG_DIR", &fake_home);
     cmd_remove.current_dir(&project_dir); // Add for consistency
     cmd_remove.arg("preset").arg("remove").arg("rust-files");
@@ -381,7 +380,7 @@ config = "ext:toml"
     fs::write(config_dir.join("config.toml"), preset_content)?;
 
     // 2. Test search with one preset
-    let mut cmd_search1 = Command::cargo_bin("rdump")?;
+    let mut cmd_search1 = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_search1.env("RDUMP_TEST_CONFIG_DIR", &fake_home);
     cmd_search1.current_dir(&project_dir);
     cmd_search1.arg("search").arg("-p").arg("rust");
@@ -393,7 +392,7 @@ config = "ext:toml"
 
     // 3. Test search with a preset AND a query
     // Should evaluate to `(ext:rs) & contains:main`
-    let mut cmd_search2 = Command::cargo_bin("rdump")?;
+    let mut cmd_search2 = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_search2.env("RDUMP_TEST_CONFIG_DIR", &fake_home);
     cmd_search2.current_dir(&project_dir);
     cmd_search2
@@ -408,7 +407,7 @@ config = "ext:toml"
 
     // 4. Test search with multiple presets
     // Should evaluate to `(ext:toml) & (ext:rs)` -> no results
-    let mut cmd_search3 = Command::cargo_bin("rdump")?;
+    let mut cmd_search3 = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_search3.env("RDUMP_TEST_CONFIG_DIR", &fake_home);
     cmd_search3.current_dir(&project_dir);
     cmd_search3
@@ -442,7 +441,7 @@ app = "ext:toml""#;
     fs::write(project_dir.join(".rdump.toml"), local_preset)?;
 
     // 3. Run the search from the project directory
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.env("RDUMP_TEST_CONFIG_DIR", &fake_home);
     cmd.current_dir(&project_dir); // CRITICAL: Run from where the local config is
     cmd.arg("search").arg("-p").arg("app");
@@ -461,7 +460,7 @@ fn test_preset_error_handling() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, fake_home, _project_dir) = setup_preset_test_env();
 
     // Test removing a preset that doesn't exist
-    let mut cmd_remove = Command::cargo_bin("rdump")?;
+    let mut cmd_remove = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd_remove.env("RDUMP_TEST_CONFIG_DIR", &fake_home);
     // Note: We have to create an empty config file first for the remove error to trigger
     let config_dir = fake_home.join("rdump");
@@ -483,7 +482,7 @@ fn test_preset_error_handling() -> Result<(), Box<dyn std::error::Error>> {
 fn test_search_with_or_operator() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("ext:rs | contains:text");
 
@@ -499,7 +498,7 @@ fn test_output_to_file_disables_color() -> Result<(), Box<dyn std::error::Error>
     let (_dir, root) = setup_test_dir();
     let output_path = root.join("output.txt");
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search")
         .arg("ext:rs")
@@ -527,7 +526,7 @@ fn test_output_to_file_forced_color() -> Result<(), Box<dyn std::error::Error>> 
     let (_dir, root) = setup_test_dir();
     let output_path = root.join("output_forced.txt");
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search")
         .arg("ext:rs")
@@ -550,7 +549,7 @@ fn test_output_to_file_forced_color() -> Result<(), Box<dyn std::error::Error>> 
 fn test_search_unknown_predicate_fails() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("unknown:predicate");
 
@@ -564,7 +563,7 @@ fn test_search_unknown_predicate_fails() -> Result<(), Box<dyn std::error::Error
 fn test_search_implicit_and_with_negation_fails() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     // This query is invalid because it's missing an `&` or `|` operator.
     cmd.arg("search").arg("in:. !name:*.txt");
@@ -577,7 +576,7 @@ fn test_search_implicit_and_with_negation_fails() -> Result<(), Box<dyn std::err
 
 #[test]
 fn test_lang_list_command() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.arg("lang").arg("list");
 
     cmd.assert()
@@ -593,7 +592,7 @@ fn test_lang_list_command() -> Result<(), Box<dyn std::error::Error>> {
 fn test_search_no_headers_flag() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("ext:rs").arg("--no-headers");
 
@@ -609,7 +608,7 @@ fn test_search_no_headers_flag() -> Result<(), Box<dyn std::error::Error>> {
 fn test_search_color_never_flag() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("ext:rs").arg("--color").arg("never");
 
@@ -624,7 +623,7 @@ fn test_search_color_never_flag() -> Result<(), Box<dyn std::error::Error>> {
 fn test_search_empty_query_fails() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("   "); // Whitespace-only query
 
@@ -638,7 +637,7 @@ fn test_search_empty_query_fails() -> Result<(), Box<dyn std::error::Error>> {
 fn test_search_with_find_flag() -> Result<(), Box<dyn std::error::Error>> {
     let (_dir, root) = setup_test_dir();
 
-    let mut cmd = Command::cargo_bin("rdump")?;
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg("ext:rs").arg("--find");
 

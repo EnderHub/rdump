@@ -13,7 +13,7 @@ pub(super) fn parse_and_compare_size(file_size: u64, query: &str) -> Result<bool
     let size_str = size_str.trim().to_lowercase();
     let (num_str, unit) = size_str.split_at(
         size_str
-            .find(|c: char| !c.is_digit(10) && c != '.')
+            .find(|c: char| !c.is_ascii_digit() && c != '.')
             .unwrap_or(size_str.len()),
     );
 
@@ -23,7 +23,7 @@ pub(super) fn parse_and_compare_size(file_size: u64, query: &str) -> Result<bool
         "kb" | "k" => 1024.0,
         "mb" | "m" => 1024.0 * 1024.0,
         "gb" | "g" => 1024.0 * 1024.0 * 1024.0,
-        _ => return Err(anyhow!("Invalid size unit: {}", unit)),
+        _ => return Err(anyhow!("Invalid size unit: {unit}")),
     };
 
     let target_size_bytes = (num * multiplier) as u64;
@@ -32,7 +32,7 @@ pub(super) fn parse_and_compare_size(file_size: u64, query: &str) -> Result<bool
         ">" => Ok(file_size > target_size_bytes),
         "<" => Ok(file_size < target_size_bytes),
         "=" => Ok(file_size == target_size_bytes),
-        _ => Err(anyhow!("Invalid size operator: {}", op)),
+        _ => Err(anyhow!("Invalid size operator: {op}")),
     }
 }
 
@@ -51,7 +51,7 @@ pub(super) fn parse_and_compare_time(modified_time: SystemTime, query: &str) -> 
     } else if let Ok(datetime) = parse_absolute_time(time_str) {
         datetime
     } else {
-        return Err(anyhow!("Invalid date format: '{}'", time_str));
+        return Err(anyhow!("Invalid date format: '{time_str}'"));
     };
 
     match op {
@@ -67,14 +67,14 @@ pub(super) fn parse_and_compare_time(modified_time: SystemTime, query: &str) -> 
                 Ok(modified_time == threshold_time)
             }
         }
-        _ => Err(anyhow!("Invalid time operator: {}", op)),
+        _ => Err(anyhow!("Invalid time operator: {op}")),
     }
 }
 
 fn parse_relative_time(time_str: &str) -> Result<Duration> {
     let (num_str, unit) = time_str.split_at(
         time_str
-            .find(|c: char| !c.is_digit(10))
+            .find(|c: char| !c.is_ascii_digit())
             .unwrap_or(time_str.len()),
     );
     let num = num_str.parse::<u64>()?;

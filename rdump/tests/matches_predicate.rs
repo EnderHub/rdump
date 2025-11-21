@@ -1,8 +1,6 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
 use std::io::Write;
-use std::process::Command;
 use tempfile::tempdir;
 
 fn setup_test_dir() -> (tempfile::TempDir, std::path::PathBuf) {
@@ -30,7 +28,7 @@ fn setup_test_dir() -> (tempfile::TempDir, std::path::PathBuf) {
 #[test]
 fn test_matches_with_special_characters() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg(r#"matches:'\(hello world\)'"#);
 
@@ -42,7 +40,7 @@ fn test_matches_with_special_characters() {
 #[test]
 fn test_matches_multiple_lines() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg(r#"matches:'hello world'"#);
 
@@ -54,7 +52,7 @@ fn test_matches_multiple_lines() {
 #[test]
 fn test_matches_no_match() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg(r#"matches:'goodbye world'"#);
 
@@ -64,7 +62,7 @@ fn test_matches_no_match() {
 #[test]
 fn test_matches_case_insensitive() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg(r#"matches:'(?i)hello world'"#);
 
@@ -79,7 +77,7 @@ fn test_matches_case_insensitive() {
 #[test]
 fn test_matches_unicode() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg(r#"matches:'こんにちは世界'"#);
 
@@ -91,7 +89,7 @@ fn test_matches_unicode() {
 #[test]
 fn test_invalid_regex() {
     let (_dir, root) = setup_test_dir();
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(&root);
     cmd.arg("search").arg(r#"matches:'('"#);
 

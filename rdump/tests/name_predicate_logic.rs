@@ -1,7 +1,5 @@
-use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
-use std::process::Command;
 use tempfile::tempdir;
 
 #[test]
@@ -18,7 +16,7 @@ fn test_exclude_spec_files_using_name_predicate() {
     .unwrap();
     fs::write(root.join("styles.css"), "body { color: red; }").unwrap();
 
-    let mut cmd = Command::cargo_bin("rdump").unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
     cmd.current_dir(root);
 
     // The query should find .ts files but exclude .spec.ts files

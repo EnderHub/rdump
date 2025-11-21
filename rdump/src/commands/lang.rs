@@ -18,7 +18,7 @@ pub fn run_lang(action: LangAction) -> Result<()> {
             let profile = profiles
                 .into_iter()
                 .find(|p| p.name.to_lowercase() == lang_lower || p.extensions.contains(&lang_lower.as_str()))
-                .ok_or_else(|| anyhow!("Language '{}' not supported. Run `rdump lang list` to see available languages.", language))?;
+                .ok_or_else(|| anyhow!("Language '{language}' not supported. Run `rdump lang list` to see available languages."))?;
 
             println!(
                 "Predicates for {} ({})",

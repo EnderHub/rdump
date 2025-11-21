@@ -18,7 +18,7 @@ pub mod limits {
 
     /// Returns true if the byte slice is likely a binary file.
     pub fn is_probably_binary(bytes: &[u8]) -> bool {
-        bytes.iter().any(|b| *b == 0)
+        bytes.contains(&0)
     }
 
     /// Light heuristic to skip obvious secrets before printing them.
