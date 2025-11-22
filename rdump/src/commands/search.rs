@@ -1,5 +1,5 @@
 use crate::limits::{safe_canonicalize, DEFAULT_MAX_DEPTH};
-use crate::{config, ColorChoice, SearchArgs};
+use crate::{config, ColorChoice, SearchArgs, SearchOptions};
 use anyhow::{anyhow, Result};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
@@ -27,8 +27,17 @@ pub fn run_search(mut args: SearchArgs) -> Result<()> {
         args.format = crate::Format::Find;
     }
 
-    // --- Perform the actual search ---
-    let matching_files = perform_search(&args)?;
+    // --- Build options and perform the actual search ---
+    let options = SearchOptions {
+        root: args.root.clone(),
+        presets: args.preset.clone(),
+        no_ignore: args.no_ignore,
+        hidden: args.hidden,
+        max_depth: args.max_depth,
+        sql_dialect: args.dialect.map(Into::into),
+    };
+    let query = args.query.as_deref().unwrap_or("");
+    let matching_files = perform_search_internal(query, &options)?;
 
     // --- Determine if color should be used ---
     let use_color = if args.output.is_some() {
@@ -74,22 +83,29 @@ pub fn run_search(mut args: SearchArgs) -> Result<()> {
 
 /// Performs the search logic and returns the matching files and their hunks.
 /// This function is separated from `run_search` to be testable.
-pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
+pub(crate) fn perform_search_internal(
+    query: &str,
+    options: &SearchOptions,
+) -> Result<Vec<(PathBuf, Vec<Range>)>> {
     // --- Load Config and Build Query ---
     let config = config::load_config()?;
-    let mut final_query: Option<String> = args.query.clone();
-    let display_root = args.root.clone();
-    let canonical_root = dunce::canonicalize(&args.root).map_err(|_| {
+    let mut final_query: Option<String> = if query.trim().is_empty() {
+        None
+    } else {
+        Some(query.to_string())
+    };
+    let display_root = options.root.clone();
+    let canonical_root = dunce::canonicalize(&options.root).map_err(|_| {
         anyhow!(
             "root path '{}' does not exist or is not accessible.",
-            args.root.display()
+            options.root.display()
         )
     })?;
 
     // If presets are specified, prepend them to the query.
-    if !args.preset.is_empty() {
+    if !options.presets.is_empty() {
         let mut preset_queries = Vec::new();
-        for preset_name in &args.preset {
+        for preset_name in &options.presets {
             let preset_query = config
                 .presets
                 .get(preset_name)
@@ -107,33 +123,33 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
 
     // Ensure we have a query to run.
     let query_to_parse = final_query
-        .ok_or_else(|| anyhow!("No query provided. Please provide a query or use a preset."))?;
+        .ok_or_else(|| anyhow!("Empty query. Please provide a query or use a preset."))?;
 
     if query_to_parse.trim().is_empty() {
         return Err(anyhow!("Empty query."));
     }
 
     // --- 1. Find initial candidates ---
-    let candidate_files =
-        get_candidate_files(&canonical_root, args.no_ignore, args.hidden, args.max_depth)?;
+    let candidate_files = get_candidate_files(
+        &canonical_root,
+        options.no_ignore,
+        options.hidden,
+        options.max_depth,
+    )?;
 
     // --- 2. Parse query ---
     let ast = parser::parse_query(&query_to_parse)?;
 
     // --- 2.5 Validate Predicates ---
-    // Before any evaluation, check that all used predicates are valid.
-    // This prevents errors deep in the evaluation process for a simple typo.
     validate_ast_predicates(&ast, &predicates::create_predicate_registry())?;
 
     // --- 3. Pre-filtering Pass (Metadata) ---
-    // This pass uses an evaluator with only fast metadata predicates.
-    // It quickly reduces the number of files needing full evaluation.
     let metadata_registry = predicates::create_metadata_predicate_registry();
     let pre_filter_evaluator = Evaluator::new(ast.clone(), metadata_registry);
 
     let first_error = Mutex::new(None);
     let pre_filtered_files: Vec<PathBuf> = candidate_files
-        .into_iter() // This pass is not parallel, it's fast enough.
+        .into_iter()
         .filter(|path| {
             if first_error.lock().unwrap().is_some() {
                 return false;
@@ -161,10 +177,9 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
     }
 
     // --- 4. Main Evaluation Pass (Content + Semantic) ---
-    // This pass uses the full evaluator on the smaller, pre-filtered set of files.
     let mut code_settings = CodeAwareSettings::default();
-    if let Some(dialect) = args.dialect {
-        code_settings.sql_dialect = Some(dialect.into());
+    if let Some(dialect) = options.sql_dialect {
+        code_settings.sql_dialect = Some(dialect);
     }
     let full_registry = predicates::create_predicate_registry_with_settings(code_settings);
     let evaluator = Evaluator::new(ast, full_registry);
@@ -205,7 +220,6 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
 
     matching_files.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Preserve a user-friendly display path while ensuring we only process validated, canonical paths.
     let matching_files: Vec<(PathBuf, Vec<Range>)> = matching_files
         .into_iter()
         .map(|(path, hunks)| {
@@ -218,6 +232,21 @@ pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
         .collect();
 
     Ok(matching_files)
+}
+
+/// Performs the search logic and returns the matching files and their hunks.
+/// This function is separated from `run_search` to be testable.
+pub fn perform_search(args: &SearchArgs) -> Result<Vec<(PathBuf, Vec<Range>)>> {
+    let options = SearchOptions {
+        root: args.root.clone(),
+        presets: args.preset.clone(),
+        no_ignore: args.no_ignore,
+        hidden: args.hidden,
+        max_depth: args.max_depth,
+        sql_dialect: args.dialect.map(Into::into),
+    };
+
+    perform_search_internal(args.query.as_deref().unwrap_or(""), &options)
 }
 
 /// Walks the directory, respecting .gitignore, and applies our own smart defaults.
@@ -491,10 +520,16 @@ mod tests {
             HashMap::new();
 
         // Test with Other predicate key (unknown predicate name)
-        let ast = AstNode::Predicate(PredicateKey::Other("unknown".to_string()), "value".to_string());
+        let ast = AstNode::Predicate(
+            PredicateKey::Other("unknown".to_string()),
+            "value".to_string(),
+        );
         let result = validate_ast_predicates(&ast, &registry);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown predicate: 'unknown'"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown predicate: 'unknown'"));
     }
 
     #[test]
@@ -509,7 +544,10 @@ mod tests {
         let ast = AstNode::Predicate(PredicateKey::Ext, "rs".to_string());
         let result = validate_ast_predicates(&ast, &registry);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown predicate: 'ext'"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown predicate: 'ext'"));
     }
 
     #[test]
@@ -518,7 +556,8 @@ mod tests {
         use crate::predicates;
         use crate::predicates::code_aware::CodeAwareSettings;
 
-        let registry = predicates::create_predicate_registry_with_settings(CodeAwareSettings::default());
+        let registry =
+            predicates::create_predicate_registry_with_settings(CodeAwareSettings::default());
 
         // Test with valid logical operations
         let ast = AstNode::LogicalOp(
@@ -536,7 +575,8 @@ mod tests {
         use crate::predicates;
         use crate::predicates::code_aware::CodeAwareSettings;
 
-        let registry = predicates::create_predicate_registry_with_settings(CodeAwareSettings::default());
+        let registry =
+            predicates::create_predicate_registry_with_settings(CodeAwareSettings::default());
 
         let ast = AstNode::Not(Box::new(AstNode::Predicate(
             PredicateKey::Ext,

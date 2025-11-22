@@ -659,10 +659,9 @@ fn test_python_decorated_class() {
 
 #[test]
 fn test_python_custom_multiple_classes() {
-    let dir = setup_custom_project(&[
-        (
-            "app.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "app.py",
+        r#"
 class First:
     pass
 
@@ -672,8 +671,7 @@ class Second:
 class Third:
     pass
 "#,
-        ),
-    ]);
+    )]);
 
     let output = assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -689,17 +687,15 @@ class Third:
 
 #[test]
 fn test_python_custom_nested_functions() {
-    let dir = setup_custom_project(&[
-        (
-            "nested.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "nested.py",
+        r#"
 def outer():
     def inner():
         pass
     return inner
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -712,14 +708,12 @@ def outer():
 
 #[test]
 fn test_python_custom_lambda_not_matched_as_func() {
-    let dir = setup_custom_project(&[
-        (
-            "lambdas.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "lambdas.py",
+        r#"
 double = lambda x: x * 2
 "#,
-        ),
-    ]);
+    )]);
 
     // func: should not match lambdas
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
@@ -733,17 +727,15 @@ double = lambda x: x * 2
 
 #[test]
 fn test_python_custom_multiline_string() {
-    let dir = setup_custom_project(&[
-        (
-            "docs.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "docs.py",
+        r#"
 docstring = """
 This is a multiline
 docstring with special content
 """
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -756,15 +748,13 @@ docstring with special content
 
 #[test]
 fn test_python_custom_f_string() {
-    let dir = setup_custom_project(&[
-        (
-            "formatted.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "formatted.py",
+        r#"
 name = "world"
 message = f"Hello {name}!"
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -777,15 +767,13 @@ message = f"Hello {name}!"
 
 #[test]
 fn test_python_custom_relative_import() {
-    let dir = setup_custom_project(&[
-        (
-            "pkg/module.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "pkg/module.py",
+        r#"
 from . import sibling
 from ..parent import something
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -798,14 +786,12 @@ from ..parent import something
 
 #[test]
 fn test_python_custom_starred_import() {
-    let dir = setup_custom_project(&[
-        (
-            "wildcard.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "wildcard.py",
+        r#"
 from os.path import *
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -818,14 +804,12 @@ from os.path import *
 
 #[test]
 fn test_python_custom_method_call_chain() {
-    let dir = setup_custom_project(&[
-        (
-            "chains.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "chains.py",
+        r#"
 result = obj.method1().method2().method3()
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -838,10 +822,9 @@ result = obj.method1().method2().method3()
 
 #[test]
 fn test_python_custom_static_method() {
-    let dir = setup_custom_project(&[
-        (
-            "static.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "static.py",
+        r#"
 class Utils:
     @staticmethod
     def helper():
@@ -851,8 +834,7 @@ class Utils:
     def factory(cls):
         pass
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -865,16 +847,14 @@ class Utils:
 
 #[test]
 fn test_python_custom_async_comprehension() {
-    let dir = setup_custom_project(&[
-        (
-            "async_comp.py",
-            r#"
+    let dir = setup_custom_project(&[(
+        "async_comp.py",
+        r#"
 async def gather_data():
     results = [await fetch(x) async for x in sources]
     return results
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())

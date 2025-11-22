@@ -1,0 +1,2 @@
+[presets]
+rust_funcs_coverage = "func:. & ext:rs"

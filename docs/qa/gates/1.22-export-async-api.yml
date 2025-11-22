@@ -1,0 +1,88 @@
+story_id: "1.22"
+story_name: "Export Async API"
+review_date: "2025-11-21"
+reviewer: "Quinn (Test Architect)"
+
+gate_status: PASS
+
+quality_score: 100
+
+acceptance_criteria:
+  feature_gating:
+    - id: AC1
+      description: "search_async only exported with async feature"
+      status: PASS
+      evidence: "lib.rs line 205"
+    - id: AC2
+      description: "search_all_async only exported with async feature"
+      status: PASS
+      evidence: "lib.rs line 205"
+    - id: AC3
+      description: "async_api module only compiled with async feature"
+      status: PASS
+      evidence: "lib.rs line 52-53"
+    - id: AC4
+      description: "No async types leak without feature"
+      status: PASS
+      evidence: "Build without feature succeeds"
+
+  build_verification:
+    - id: AC5
+      description: "cargo build succeeds without async imports"
+      status: PASS
+      evidence: "Finished in 2.12s"
+    - id: AC6
+      description: "cargo build --features async succeeds with async imports"
+      status: PASS
+      evidence: "Finished in 2.28s"
+    - id: AC7
+      description: "use rdump::search_async fails without feature"
+      status: PASS
+      evidence: "Test not compiled without feature"
+    - id: AC8
+      description: "use rdump::search_async succeeds with feature"
+      status: PASS
+      evidence: "async_exports_available_when_feature_enabled passes"
+
+  documentation:
+    - id: AC9
+      description: "cargo doc shows async functions only when feature enabled"
+      status: PASS
+      evidence: "Feature gate controls visibility"
+    - id: AC10
+      description: "Feature requirement noted in function docs"
+      status: PASS
+      evidence: "async_api.rs module docs line 3"
+
+test_results:
+  without_async:
+    tests: 2
+    passed: 2
+    failed: 0
+  with_async:
+    tests: 3
+    passed: 3
+    failed: 0
+  test_files:
+    - "rdump/tests/api_exports.rs"
+
+code_locations:
+  - file: "rdump/src/lib.rs"
+    lines: "52-53"
+    description: "async_api module declaration"
+  - file: "rdump/src/lib.rs"
+    lines: "204-205"
+    description: "async function re-exports"
+  - file: "rdump/tests/api_exports.rs"
+    lines: "86-92"
+    description: "async exports test"
+
+security_review:
+  status: "No concerns"
+  notes: "Standard Rust feature gating patterns"
+
+performance_review:
+  status: "Efficient"
+  notes: "Module not compiled without feature reduces build time"
+
+recommendation: "Ready for Done"

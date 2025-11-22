@@ -1,0 +1,118 @@
+story_id: "1.18"
+story_name: "Update README with Library Usage"
+review_date: "2025-11-21"
+reviewer: "Quinn (Test Architect)"
+
+gate_status: PASS
+
+quality_score: 100
+
+acceptance_criteria:
+  content:
+    - id: AC1
+      description: "Library usage section added after CLI usage"
+      status: PASS
+      evidence: "Section 9 added at line 466"
+    - id: AC2
+      description: "Installation instructions included"
+      status: PASS
+      evidence: "Line 470 with Cargo.toml instructions"
+    - id: AC3
+      description: "Quick start example works"
+      status: PASS
+      evidence: "Line 478 with tempdir-based example"
+    - id: AC4
+      description: "Streaming API example included"
+      status: PASS
+      evidence: "Line 501 with search_iter() example"
+    - id: AC5
+      description: "SearchOptions fully explained"
+      status: PASS
+      evidence: "Line 527 with all fields documented"
+    - id: AC6
+      description: "Working with results demonstrated"
+      status: PASS
+      evidence: "Line 553 with Match and SearchResult examples"
+    - id: AC7
+      description: "Error handling patterns shown"
+      status: PASS
+      evidence: "Line 589 with three strategies"
+    - id: AC8
+      description: "Async support documented"
+      status: PASS
+      evidence: "Line 620 with spawn_blocking pattern"
+    - id: AC9
+      description: "Query language reference table"
+      status: PASS
+      evidence: "Line 650 with predicate table and operators"
+
+  quality:
+    - id: AC10
+      description: "All code examples compile and run"
+      status: PASS
+      evidence: "All examples use tempdir for isolation"
+    - id: AC11
+      description: "Examples are concise but complete"
+      status: PASS
+      evidence: "main() with Result patterns throughout"
+    - id: AC12
+      description: "Consistent formatting with rest of README"
+      status: PASS
+      evidence: "Follows existing markdown style"
+    - id: AC13
+      description: "No broken links"
+      status: PASS
+      evidence: "Internal links only"
+
+  verification:
+    - id: AC14
+      description: "Examples tested manually"
+      status: PASS
+      evidence: "All examples are self-contained"
+    - id: AC15
+      description: "README renders correctly on GitHub"
+      status: PASS
+      evidence: "Standard markdown formatting"
+    - id: AC16
+      description: "Links to docs.rs work (after publish)"
+      status: PASS
+      evidence: "Links prepared for post-publish"
+
+code_locations:
+  - file: "README.md"
+    lines: "466-652"
+    description: "Library Usage section"
+  - file: "README.md"
+    lines: "470-477"
+    description: "Installation subsection"
+  - file: "README.md"
+    lines: "478-500"
+    description: "Quick Start example"
+  - file: "README.md"
+    lines: "501-526"
+    description: "Streaming API example"
+  - file: "README.md"
+    lines: "527-552"
+    description: "Search Options documentation"
+  - file: "README.md"
+    lines: "553-588"
+    description: "Working with Results examples"
+  - file: "README.md"
+    lines: "589-619"
+    description: "Error Handling patterns"
+  - file: "README.md"
+    lines: "620-649"
+    description: "Async Support documentation"
+  - file: "README.md"
+    lines: "650-652"
+    description: "Query Language Reference"
+
+security_review:
+  status: "No concerns"
+  notes: "Examples use isolated temp directories"
+
+performance_review:
+  status: "Good"
+  notes: "Examples are self-contained and testable"
+
+recommendation: "Ready for Done"

@@ -1,0 +1,123 @@
+story_id: "1.13"
+story_name: "Write Core Integration Tests"
+review_date: "2025-11-21"
+reviewer: "Quinn (Test Architect)"
+
+gate_status: PASS
+
+quality_score: 100
+
+acceptance_criteria:
+  test_coverage:
+    - id: AC1
+      description: "test_basic_extension_search passes"
+      status: PASS
+      evidence: "Lines 71-87 in library_api.rs"
+    - id: AC2
+      description: "test_search_with_no_results passes"
+      status: PASS
+      evidence: "Lines 89-103 in library_api.rs"
+    - id: AC3
+      description: "test_search_nonexistent_root passes"
+      status: PASS
+      evidence: "Lines 105-116 in library_api.rs"
+    - id: AC4
+      description: "test_invalid_query_syntax passes"
+      status: PASS
+      evidence: "Lines 118-133 in library_api.rs"
+    - id: AC5
+      description: "test_function_predicate passes"
+      status: PASS
+      evidence: "Lines 139-159 in library_api.rs"
+    - id: AC6
+      description: "test_function_predicate_multiple_matches passes"
+      status: PASS
+      evidence: "Lines 161-177 in library_api.rs"
+    - id: AC7
+      description: "test_and_query passes"
+      status: PASS
+      evidence: "Lines 183-198 in library_api.rs"
+    - id: AC8
+      description: "test_or_query passes"
+      status: PASS
+      evidence: "Lines 200-220 in library_api.rs"
+    - id: AC9
+      description: "test_not_query passes"
+      status: PASS
+      evidence: "Lines 222-239 in library_api.rs"
+    - id: AC10
+      description: "test_complex_compound_query passes"
+      status: PASS
+      evidence: "Lines 241-260 in library_api.rs"
+    - id: AC11
+      description: "test_whole_file_match passes"
+      status: PASS
+      evidence: "Lines 266-285 in library_api.rs"
+    - id: AC12
+      description: "test_whole_file_match_content_available passes"
+      status: PASS
+      evidence: "Lines 287-305 in library_api.rs"
+    - id: AC13
+      description: "test_match_line_numbers_are_one_indexed passes"
+      status: PASS
+      evidence: "Lines 311-332 in library_api.rs"
+    - id: AC14
+      description: "test_match_multiline passes"
+      status: PASS
+      evidence: "Lines 334-363 in library_api.rs"
+    - id: AC15
+      description: "test_match_byte_range passes"
+      status: PASS
+      evidence: "Lines 365-382 in library_api.rs"
+    - id: AC16
+      description: "test_matched_lines_helper passes"
+      status: PASS
+      evidence: "Lines 388-407 in library_api.rs"
+    - id: AC17
+      description: "test_match_count_helper passes"
+      status: PASS
+      evidence: "Lines 409-427 in library_api.rs"
+    - id: AC18
+      description: "test_empty_query_with_preset passes"
+      status: PASS
+      evidence: "Lines 433-468 in library_api.rs"
+
+  test_quality:
+    - id: AC19
+      description: "All tests use tempdir() for isolation"
+      status: PASS
+      evidence: "All tests use create_rust_fixtures(), create_multi_lang_fixtures(), or tempdir()"
+    - id: AC20
+      description: "Tests clean up automatically"
+      status: PASS
+      evidence: "TempDir drops automatically when test ends"
+    - id: AC21
+      description: "Tests are deterministic"
+      status: PASS
+      evidence: "No timing dependencies, ENV_MUTEX for preset test thread safety"
+    - id: AC22
+      description: "Tests have clear assertions with good error messages"
+      status: PASS
+      evidence: "Uses assert_eq! and assert! with descriptive messages"
+
+test_results:
+  total_tests: 18
+  passed: 18
+  failed: 0
+  test_files:
+    - "rdump/tests/library_api.rs"
+
+code_locations:
+  - file: "rdump/tests/library_api.rs"
+    lines: "1-469"
+    description: "Complete integration test suite"
+
+security_review:
+  status: "No concerns"
+  notes: "Test suite uses isolated temp directories"
+
+performance_review:
+  status: "Efficient"
+  notes: "Lightweight fixtures, parallel-safe tests, no external dependencies"
+
+recommendation: "Ready for Done"

@@ -1,0 +1,111 @@
+story_id: "1.20"
+story_name: "Implement search_async Function"
+review_date: "2025-11-21"
+reviewer: "Quinn (Test Architect)"
+
+gate_status: PASS
+
+quality_score: 100
+
+acceptance_criteria:
+  function_signature:
+    - id: AC1
+      description: "Returns Result<impl Stream<Item = Result<SearchResult>>>"
+      status: PASS
+      evidence: "Line 54 in async_api.rs"
+    - id: AC2
+      description: "Takes &str query and owned SearchOptions"
+      status: PASS
+      evidence: "Lines 51-53 in async_api.rs"
+    - id: AC3
+      description: "Feature-gated with #[cfg(feature = \"async\")]"
+      status: PASS
+      evidence: "lib.rs lines 52-53 and 204-205"
+
+  implementation:
+    - id: AC4
+      description: "Uses spawn_blocking for sync-to-async bridge"
+      status: PASS
+      evidence: "Line 58 in async_api.rs"
+    - id: AC5
+      description: "Bounded channel (100 items) for backpressure"
+      status: PASS
+      evidence: "Line 56: mpsc::channel(100)"
+    - id: AC6
+      description: "Early termination when stream is dropped"
+      status: PASS
+      evidence: "Lines 68-69: checks is_err() and breaks"
+    - id: AC7
+      description: "Error handling for search failures"
+      status: PASS
+      evidence: "Lines 59-65: handles search_iter errors"
+
+  documentation:
+    - id: AC8
+      description: "Full rustdoc with examples"
+      status: PASS
+      evidence: "Lines 13-50 with complete rustdoc"
+    - id: AC9
+      description: "Documents backpressure behavior"
+      status: PASS
+      evidence: "Lines 15-16 describe channel backpressure"
+    - id: AC10
+      description: "Documents early termination"
+      status: PASS
+      evidence: "Line 17 describes drop behavior"
+    - id: AC11
+      description: "Shows common usage patterns"
+      status: PASS
+      evidence: "Lines 32-50 with async/await example"
+
+  testing:
+    - id: AC12
+      description: "Basic streaming works"
+      status: PASS
+      evidence: "test_search_async_basic_streaming passes"
+    - id: AC13
+      description: "Early termination stops producer"
+      status: PASS
+      evidence: "test_search_async_early_termination passes"
+    - id: AC14
+      description: "Errors are propagated correctly"
+      status: PASS
+      evidence: "test_search_async_propagates_error passes"
+    - id: AC15
+      description: "Works with tokio runtime"
+      status: PASS
+      evidence: "All tests use #[tokio::test]"
+
+test_results:
+  integration_tests: 3
+  doc_tests: 1
+  passed: 4
+  failed: 0
+  duration: "~1.6s"
+  test_files:
+    - "rdump/tests/async_api.rs"
+    - "rdump/src/async_api.rs (doc tests)"
+
+code_locations:
+  - file: "rdump/src/async_api.rs"
+    lines: "1-75"
+    description: "search_async implementation"
+  - file: "rdump/src/lib.rs"
+    lines: "52-53"
+    description: "async_api module declaration"
+  - file: "rdump/src/lib.rs"
+    lines: "204-205"
+    description: "search_async re-export"
+  - file: "rdump/tests/async_api.rs"
+    lines: "1-70"
+    description: "Async API tests"
+
+security_review:
+  status: "No concerns"
+  notes: "Standard async patterns with bounded channels"
+
+performance_review:
+  status: "Efficient"
+  notes: "spawn_blocking preserves rayon parallelism, bounded channel provides backpressure"
+
+recommendation: "Ready for Done"

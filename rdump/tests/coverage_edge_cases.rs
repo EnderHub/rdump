@@ -178,10 +178,7 @@ $$ LANGUAGE plpgsql;
 
 #[test]
 fn test_sql_dialect_flag_postgres() {
-    let dir = setup_custom_project(&[(
-        "query.sql",
-        "SELECT * FROM users;",
-    )]);
+    let dir = setup_custom_project(&[("query.sql", "SELECT * FROM users;")]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -195,10 +192,7 @@ fn test_sql_dialect_flag_postgres() {
 
 #[test]
 fn test_sql_dialect_flag_mysql() {
-    let dir = setup_custom_project(&[(
-        "query.sql",
-        "SELECT * FROM users;",
-    )]);
+    let dir = setup_custom_project(&[("query.sql", "SELECT * FROM users;")]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -212,10 +206,7 @@ fn test_sql_dialect_flag_mysql() {
 
 #[test]
 fn test_sql_dialect_flag_sqlite() {
-    let dir = setup_custom_project(&[(
-        "query.sql",
-        "SELECT * FROM users;",
-    )]);
+    let dir = setup_custom_project(&[("query.sql", "SELECT * FROM users;")]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -677,6 +668,7 @@ fn test_use_preset() {
 
     // First add a preset
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
+        .current_dir(dir.path())
         .arg("preset")
         .arg("add")
         .arg("rust_funcs_coverage")
@@ -696,6 +688,7 @@ fn test_use_preset() {
 
     // Clean up
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
+        .current_dir(dir.path())
         .arg("preset")
         .arg("remove")
         .arg("rust_funcs_coverage")
@@ -918,10 +911,7 @@ fn test_code_aware_empty_query_result() {
 
 #[test]
 fn test_sql_generic_dialect() {
-    let dir = setup_custom_project(&[(
-        "simple.sql",
-        "SELECT * FROM users WHERE active = 1;",
-    )]);
+    let dir = setup_custom_project(&[("simple.sql", "SELECT * FROM users WHERE active = 1;")]);
 
     // Generic SQL without specific dialect markers
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
@@ -983,9 +973,7 @@ fn test_not_predicate_with_code_aware() {
 
 #[test]
 fn test_boolean_combinations_edge_cases() {
-    let dir = setup_custom_project(&[
-        ("test.rs", "fn foo() { bar() }"),
-    ]);
+    let dir = setup_custom_project(&[("test.rs", "fn foo() { bar() }")]);
 
     // Complex boolean combination
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
@@ -1003,9 +991,7 @@ fn test_boolean_combinations_edge_cases() {
 
 #[test]
 fn test_hunks_with_boolean_true() {
-    let dir = setup_custom_project(&[
-        ("test.rs", "fn foo() {} fn bar() {}"),
-    ]);
+    let dir = setup_custom_project(&[("test.rs", "fn foo() {} fn bar() {}")]);
 
     // Hunk-producing predicate AND with boolean true (ext match)
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
@@ -1019,9 +1005,7 @@ fn test_hunks_with_boolean_true() {
 
 #[test]
 fn test_boolean_false_and_hunks() {
-    let dir = setup_custom_project(&[
-        ("test.rs", "fn foo() {}"),
-    ]);
+    let dir = setup_custom_project(&[("test.rs", "fn foo() {}")]);
 
     // Boolean false AND hunks should return false
     assert_cmd::cargo::cargo_bin_cmd!("rdump")

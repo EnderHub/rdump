@@ -458,10 +458,9 @@ fn test_go_def_regex() {
 
 #[test]
 fn test_go_custom_interface() {
-    let dir = setup_custom_project(&[
-        (
-            "service.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "service.go",
+        r#"package main
 
 type Handler interface {
     Handle(req Request) Response
@@ -477,8 +476,7 @@ type Response struct {
     Body   string
 }
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -491,10 +489,9 @@ type Response struct {
 
 #[test]
 fn test_go_custom_multiple_structs() {
-    let dir = setup_custom_project(&[
-        (
-            "models.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "models.go",
+        r#"package main
 
 type User struct {
     ID   int
@@ -513,8 +510,7 @@ type Comment struct {
     UserID int
 }
 "#,
-        ),
-    ]);
+    )]);
 
     let output = assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -530,10 +526,9 @@ type Comment struct {
 
 #[test]
 fn test_go_custom_method_receiver() {
-    let dir = setup_custom_project(&[
-        (
-            "methods.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "methods.go",
+        r#"package main
 
 type Counter struct {
     value int
@@ -547,8 +542,7 @@ func (c Counter) Value() int {
     return c.value
 }
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -561,10 +555,9 @@ func (c Counter) Value() int {
 
 #[test]
 fn test_go_custom_multiple_imports() {
-    let dir = setup_custom_project(&[
-        (
-            "imports.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "imports.go",
+        r#"package main
 
 import (
     "fmt"
@@ -577,8 +570,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
     fmt.Println("handled")
 }
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -591,10 +583,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 #[test]
 fn test_go_custom_constants() {
-    let dir = setup_custom_project(&[
-        (
-            "constants.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "constants.go",
+        r#"package main
 
 const (
     MaxRetries = 3
@@ -603,8 +594,7 @@ const (
 
 const Version = "1.0.0"
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -617,10 +607,9 @@ const Version = "1.0.0"
 
 #[test]
 fn test_go_custom_defer() {
-    let dir = setup_custom_project(&[
-        (
-            "defer.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "defer.go",
+        r#"package main
 
 import "os"
 
@@ -633,8 +622,7 @@ func readFile(path string) error {
     return nil
 }
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -647,10 +635,9 @@ func readFile(path string) error {
 
 #[test]
 fn test_go_custom_goroutine() {
-    let dir = setup_custom_project(&[
-        (
-            "concurrent.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "concurrent.go",
+        r#"package main
 
 func worker(jobs <-chan int, results chan<- int) {
     for j := range jobs {
@@ -665,8 +652,7 @@ func main() {
     go worker(jobs, results)
 }
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -679,10 +665,9 @@ func main() {
 
 #[test]
 fn test_go_custom_embedded_struct() {
-    let dir = setup_custom_project(&[
-        (
-            "embedded.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "embedded.go",
+        r#"package main
 
 type Base struct {
     ID int
@@ -693,8 +678,7 @@ type Extended struct {
     Name string
 }
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -708,16 +692,14 @@ type Extended struct {
 
 #[test]
 fn test_go_custom_type_alias() {
-    let dir = setup_custom_project(&[
-        (
-            "types.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "types.go",
+        r#"package main
 
 type UserID int64
 type Handler func(int) error
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())
@@ -730,10 +712,9 @@ type Handler func(int) error
 
 #[test]
 fn test_go_custom_error_handling() {
-    let dir = setup_custom_project(&[
-        (
-            "errors.go",
-            r#"package main
+    let dir = setup_custom_project(&[(
+        "errors.go",
+        r#"package main
 
 import "errors"
 
@@ -746,8 +727,7 @@ func find(id int) error {
     return nil
 }
 "#,
-        ),
-    ]);
+    )]);
 
     assert_cmd::cargo::cargo_bin_cmd!("rdump")
         .current_dir(dir.path())

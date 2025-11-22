@@ -14,7 +14,10 @@
       "Bash(cargo build:*)",
       "Bash(find:*)",
       "Bash(sort:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(mkdir:*)",
+      "Bash(cargo doc:*)",
+      "Bash(cargo run:*)"
     ],
     "deny": [],
     "ask": []

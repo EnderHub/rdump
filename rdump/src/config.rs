@@ -13,15 +13,21 @@ pub struct Config {
     pub presets: HashMap<String, String>,
 }
 
-/// Returns the path to the global configuration file.
-/// It can be overridden by the RDUMP_TEST_CONFIG_DIR environment variable for testing.
+/// Returns the path to the configuration file.
+/// Prefers a repo-local `.rdump/config.toml` to avoid touching host-global dirs.
+/// Can be overridden by the RDUMP_TEST_CONFIG_DIR environment variable for testing.
 pub fn global_config_path() -> Option<PathBuf> {
     // First, check for the override environment variable. This is active in ALL builds.
     if let Ok(path_str) = env::var("RDUMP_TEST_CONFIG_DIR") {
         return Some(PathBuf::from(path_str).join("rdump/config.toml"));
     }
 
-    // If the override is not set, fall back to the default platform-specific directory.
+    // Next, prefer a repo-local config under the current working directory.
+    if let Ok(cwd) = env::current_dir() {
+        return Some(cwd.join(".rdump/config.toml"));
+    }
+
+    // If neither is available, fall back to the default platform-specific directory.
     dirs::config_dir().map(|p| p.join("rdump/config.toml"))
 }
 
@@ -67,8 +73,8 @@ pub fn load_config() -> Result<Config> {
 
 /// Saves the given config to the global configuration file.
 pub fn save_config(config: &Config) -> Result<()> {
-    let path = global_config_path()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine global config path"))?;
+    let path =
+        global_config_path().ok_or_else(|| anyhow::anyhow!("Could not determine config path"))?;
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -161,5 +167,25 @@ mod tests {
         assert_eq!(config.presets.get("docs").unwrap(), "ext:md | ext:txt");
 
         env::remove_var("RDUMP_TEST_CONFIG_DIR");
+    }
+
+    #[test]
+    fn test_save_config_prefers_repo_local_dir() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let temp = tempdir().unwrap();
+        let cwd = env::current_dir().unwrap();
+        env::set_current_dir(temp.path()).unwrap();
+
+        let path = global_config_path().unwrap();
+        assert!(path.ends_with(".rdump/config.toml"));
+
+        let mut cfg = Config::default();
+        cfg.presets
+            .insert("local".to_string(), "ext:rs".to_string());
+        save_config(&cfg).unwrap();
+
+        assert!(path.exists());
+
+        env::set_current_dir(cwd).unwrap();
     }
 }

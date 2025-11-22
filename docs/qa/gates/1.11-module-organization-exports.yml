@@ -1,0 +1,109 @@
+story_id: "1.11"
+story_name: "Module Organization and Exports"
+review_date: "2025-11-21"
+reviewer: "Quinn (Test Architect)"
+
+gate_status: PASS
+
+quality_score: 100
+
+acceptance_criteria:
+  type_exports:
+    - id: AC1
+      description: "rdump::SearchOptions is accessible"
+      status: PASS
+      evidence: "Line 208 in lib.rs, tested in api_exports.rs line 15"
+    - id: AC2
+      description: "rdump::SearchResult is accessible"
+      status: PASS
+      evidence: "Line 277 in lib.rs, tested in api_exports.rs line 36"
+    - id: AC3
+      description: "rdump::Match is accessible"
+      status: PASS
+      evidence: "Line 341 in lib.rs, tested in api_exports.rs line 28"
+    - id: AC4
+      description: "rdump::SearchResultIterator is accessible"
+      status: PASS
+      evidence: "Line 454 in lib.rs, tested via search_iter return"
+    - id: AC5
+      description: "rdump::SqlDialect is re-exported"
+      status: PASS
+      evidence: "Line 189 in lib.rs, tested in api_exports.rs lines 46-52"
+
+  function_exports:
+    - id: AC6
+      description: "rdump::search_iter is accessible"
+      status: PASS
+      evidence: "Line 561 in lib.rs, tested in api_exports.rs line 20"
+    - id: AC7
+      description: "rdump::search is accessible"
+      status: PASS
+      evidence: "Line 605 in lib.rs, tested in api_exports.rs line 26"
+
+  backward_compatibility:
+    - id: AC8
+      description: "All existing CLI exports unchanged"
+      status: PASS
+      evidence: "SearchArgs, Cli, Commands, Format, ColorChoice all tested in api_exports.rs lines 56-84"
+    - id: AC9
+      description: "No breaking changes to existing public API"
+      status: PASS
+      evidence: "All existing exports preserved and tested"
+    - id: AC10
+      description: "Existing perform_search() still accessible"
+      status: PASS
+      evidence: "Function at commands/search.rs:239, tested at api_exports.rs line 71"
+
+  documentation:
+    - id: AC11
+      description: "Module-level docs explain library vs CLI usage"
+      status: PASS
+      evidence: "Lines 1-37 in lib.rs with usage examples for both"
+    - id: AC12
+      description: "Each export has rustdoc"
+      status: PASS
+      evidence: "cargo doc --no-deps passes cleanly"
+
+  verification:
+    - id: AC13
+      description: "Test file verifies all imports work"
+      status: PASS
+      evidence: "2 tests pass in api_exports.rs"
+    - id: AC14
+      description: "cargo doc generates clean docs with all public items"
+      status: PASS
+      evidence: "cargo doc --no-deps completed successfully"
+
+test_results:
+  total_tests: 2
+  passed: 2
+  failed: 0
+  test_files:
+    - "rdump/tests/api_exports.rs"
+
+code_locations:
+  - file: "rdump/src/lib.rs"
+    lines: "1-37"
+    description: "Module-level documentation"
+  - file: "rdump/src/lib.rs"
+    lines: "189"
+    description: "SqlDialect re-export"
+  - file: "rdump/src/lib.rs"
+    lines: "208-560"
+    description: "Library API types"
+  - file: "rdump/src/lib.rs"
+    lines: "561-618"
+    description: "Library API functions"
+  - file: "rdump/src/lib.rs"
+    lines: "620-815"
+    description: "CLI API types"
+
+security_review:
+  status: "No concerns"
+  notes: "Module organization only affects API ergonomics"
+
+performance_review:
+  status: "No impact"
+  notes: "Re-exports are compile-time only, no runtime overhead"
+
+recommendation: "Ready for Done"

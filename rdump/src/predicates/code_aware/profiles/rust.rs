@@ -15,7 +15,14 @@ pub(super) fn create_rust_profile() -> LanguageProfile {
     let macro_query = "(macro_definition name: (identifier) @match)";
     let module_query = "(mod_item name: (identifier) @match)";
 
-    let def_query = [struct_query, enum_query, trait_query, type_query, module_query].join("\n");
+    let def_query = [
+        struct_query,
+        enum_query,
+        trait_query,
+        type_query,
+        module_query,
+    ]
+    .join("\n");
 
     queries.insert(PredicateKey::Def, def_query);
     queries.insert(PredicateKey::Struct, struct_query.to_string());

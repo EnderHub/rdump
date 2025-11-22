@@ -10,6 +10,10 @@ readme = "README.md"
 keywords = ["search", "cli", "file", "tool", "code-aware"]
 categories = ["command-line-utilities", "filesystem"]
 
+[features]
+default = []
+async = ["dep:tokio", "dep:tokio-stream", "dep:futures"]
+
 [dependencies]
 clap = { version = "4.5.49", features = ["derive"] }
 anyhow = "1.0.100"
@@ -53,6 +57,9 @@ tree-sitter-sequel = "0.3.11"
 syntect = "5.3.0"
 dunce = "1.0.4"
 globset = "0.4.15"
+tokio = { version = "1.41.1", features = ["fs", "sync", "rt", "macros"], optional = true }
+tokio-stream = { version = "0.1.16", optional = true }
+futures = { version = "0.3.31", optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.0.14"
@@ -60,3 +67,5 @@ predicates = "3.1.0"
 tree-sitter-rust = "0.24.0"
 filetime = "0.2"
 tempfile = "3.10"
+tokio = { version = "1.41.1", features = ["full"] }
+futures = "0.3.31"

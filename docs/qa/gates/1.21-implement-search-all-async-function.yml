@@ -1,0 +1,96 @@
+story_id: "1.21"
+story_name: "Implement search_all_async Function"
+review_date: "2025-11-21"
+reviewer: "Quinn (Test Architect)"
+
+gate_status: PASS
+
+quality_score: 100
+
+acceptance_criteria:
+  function_signature:
+    - id: AC1
+      description: "Returns Result<Vec<SearchResult>>"
+      status: PASS
+      evidence: "Line 115 in async_api.rs"
+    - id: AC2
+      description: "Takes &str query and owned SearchOptions"
+      status: PASS
+      evidence: "Line 115 in async_api.rs"
+    - id: AC3
+      description: "Feature-gated with #[cfg(feature = \"async\")]"
+      status: PASS
+      evidence: "lib.rs line 205"
+
+  behavior:
+    - id: AC4
+      description: "Collects all stream results"
+      status: PASS
+      evidence: "Line 119: stream.collect().into_iter().collect()"
+    - id: AC5
+      description: "First error causes Err return"
+      status: PASS
+      evidence: "Iterator collect pattern returns first Err"
+    - id: AC6
+      description: "Empty result set returns Ok(vec![])"
+      status: PASS
+      evidence: "test_search_all_async_empty verifies"
+
+  documentation:
+    - id: AC7
+      description: "Full rustdoc with examples"
+      status: PASS
+      evidence: "Lines 77-114 with complete rustdoc"
+    - id: AC8
+      description: "Performance warning for large results"
+      status: PASS
+      evidence: "Lines 112-114: Performance Note section"
+    - id: AC9
+      description: "Cross-reference to search_async"
+      status: PASS
+      evidence: "Lines 79-81 and 113-114"
+
+  testing:
+    - id: AC10
+      description: "Basic collection works"
+      status: PASS
+      evidence: "test_search_all_async_collects passes"
+    - id: AC11
+      description: "Error propagation works"
+      status: PASS
+      evidence: "test_search_all_async_error passes"
+    - id: AC12
+      description: "Empty results handled"
+      status: PASS
+      evidence: "test_search_all_async_empty passes"
+
+test_results:
+  integration_tests: 3
+  doc_tests: 1
+  passed: 4
+  failed: 0
+  duration: "~1.5s"
+  test_files:
+    - "rdump/tests/async_api.rs"
+    - "rdump/src/async_api.rs (doc tests)"
+
+code_locations:
+  - file: "rdump/src/async_api.rs"
+    lines: "77-120"
+    description: "search_all_async implementation"
+  - file: "rdump/src/lib.rs"
+    lines: "205"
+    description: "search_all_async re-export"
+  - file: "rdump/tests/async_api.rs"
+    lines: "72-122"
+    description: "search_all_async tests"
+
+security_review:
+  status: "No concerns"
+  notes: "Standard async collection pattern"
+
+performance_review:
+  status: "Documented"
+  notes: "Memory warning for large result sets properly documented"
+
+recommendation: "Ready for Done"

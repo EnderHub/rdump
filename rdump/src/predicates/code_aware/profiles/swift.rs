@@ -15,7 +15,10 @@ pub(super) fn create_swift_profile() -> LanguageProfile {
 
     let protocol_query = "(protocol_declaration name: (type_identifier) @match)";
 
-    queries.insert(PredicateKey::Def, [class_query, func_query, protocol_query].join("\n"));
+    queries.insert(
+        PredicateKey::Def,
+        [class_query, func_query, protocol_query].join("\n"),
+    );
     queries.insert(PredicateKey::Class, class_query.to_string());
     queries.insert(PredicateKey::Protocol, protocol_query.to_string());
     // Other type-level predicates (struct/enum/extension) omitted due to grammar tokens-only nodes.

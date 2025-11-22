@@ -52,10 +52,11 @@ It's a developer's swiss-army knife for code discovery. It goes beyond the text-
 8.  [**Configuration**](#8-configuration)
     - [The `config.toml` File](#the-configtoml-file)
     - [The `.rdumpignore` System](#the-rdumpignore-system)
-9.  [**Extending `rdump`: Adding a New Language**](#9-extending-rdump-adding-a-new-language)
-10. [**Troubleshooting & FAQ**](#10-troubleshooting--faq)
-11. [**Performance Benchmarks**](#11-performance-benchmarks)
-12. [**Appendices**](#12-appendices)
+9.  [**Library Usage**](#9-library-usage)
+10. [**Extending `rdump`: Adding a New Language**](#10-extending-rdump-adding-a-new-language)
+11. [**Troubleshooting & FAQ**](#11-troubleshooting--faq)
+12. [**Performance Benchmarks**](#12-performance-benchmarks)
+13. [**Appendices**](#13-appendices)
     - [Appendix A: RQL Grammar (EBNF)](#appendix-a-rql-grammar-ebnf)
     - [Appendix B: Supported File Extensions](#appendix-b-supported-file-extensions)
     - [Appendix C: Default Ignore Patterns](#appendix-c-default-ignore-patterns)
@@ -65,8 +66,8 @@ It's a developer's swiss-army knife for code discovery. It goes beyond the text-
     - [Appendix G: Integration Examples](#appendix-g-integration-examples)
     - [Appendix H: Troubleshooting Guide](#appendix-h-troubleshooting-guide)
     - [Appendix I: Migration Guide](#appendix-i-migration-guide)
-13. [**Contributing**](#13-contributing)
-14. [**License**](#14-license)
+14. [**Contributing**](#14-contributing)
+15. [**License**](#15-license)
 
 ---
 
@@ -452,7 +453,203 @@ rust-src = "ext:rs & path:src/ & !path:tests/"
 
 ---
 
-## 9. Extending `rdump`: Adding a New Language
+### The `.rdumpignore` System
+`rdump` respects directory ignore files to provide fast, relevant results. The ignore rules are applied with the following precedence, from lowest to highest:
+
+1.  **`rdump`'s built-in default ignores** (e.g., `target/`, `node_modules/`, `.git/`).
+2.  **Global gitignore:** Your user-level git ignore file.
+3.  **Project `.gitignore` files:** Found in the repository.
+4.  **Project `.rdumpignore` files:** These have the highest precedence. You can use a `.rdumpignore` file to *un-ignore* a file that was excluded by a `.gitignore` file (e.g., by adding `!/path/to/file.log`).
+
+---
+
+## 9. Library Usage
+
+`rdump` can be embedded as a Rust library. These examples are self-contained and use a temp directory for isolation.
+
+### Installation
+
+```toml
+[dependencies]
+rdump = "0.1"
+tempfile = "3" # for the examples below
+```
+
+### Quick Start
+
+```rust
+use rdump::{search, SearchOptions};
+use tempfile::tempdir;
+
+fn main() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    std::fs::write(dir.path().join("main.rs"), "fn main() {}")?;
+
+    let results = search(
+        "ext:rs & func:main",
+        SearchOptions {
+            root: dir.path().to_path_buf(),
+            ..Default::default()
+        },
+    )?;
+
+    println!("Found {} files", results.len());
+    Ok(())
+}
+```
+
+### Streaming API (memory-efficient)
+
+```rust
+use rdump::{search_iter, SearchOptions};
+use tempfile::tempdir;
+
+fn main() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    std::fs::write(dir.path().join("lib.rs"), "fn helper() {}")?;
+
+    let iter = search_iter(
+        "ext:rs",
+        SearchOptions {
+            root: dir.path().to_path_buf(),
+            ..Default::default()
+        },
+    )?;
+
+    for result in iter.take(2) {
+        let result = result?;
+        println!("{} ({} bytes)", result.path.display(), result.content.len());
+    }
+    Ok(())
+}
+```
+
+### Search Options
+
+```rust
+use rdump::{search, SearchOptions};
+use std::path::PathBuf;
+use tempfile::tempdir;
+
+fn main() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    std::fs::write(dir.path().join("main.rs"), "fn main() {}")?;
+
+    let options = SearchOptions {
+        root: dir.path().to_path_buf(),
+        presets: vec!["rust".to_string()],
+        hidden: true,
+        no_ignore: false,
+        max_depth: Some(5),
+        sql_dialect: None,
+    };
+
+    let results = search("func:main", options)?;
+    println!("Matches: {}", results.len());
+    Ok(())
+}
+```
+
+### Working with Results
+
+```rust
+use rdump::{search, SearchOptions};
+use tempfile::tempdir;
+
+fn main() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    std::fs::write(dir.path().join("main.rs"), "fn main() {}")?;
+
+    let results = search(
+        "func:main",
+        SearchOptions {
+            root: dir.path().to_path_buf(),
+            ..Default::default()
+        },
+    )?;
+
+    for result in &results {
+        if result.is_whole_file_match() {
+            println!("{}: whole file match", result.path.display());
+            continue;
+        }
+        for m in &result.matches {
+            println!(
+                "{}:{}:{}",
+                result.path.display(),
+                m.start_line,
+                m.first_line()
+            );
+        }
+    }
+    Ok(())
+}
+```
+
+### Error Handling Patterns
+
+```rust
+use rdump::{search_iter, SearchOptions};
+use tempfile::tempdir;
+
+fn main() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    std::fs::write(dir.path().join("main.rs"), "fn main() {}")?;
+
+    let iter = search_iter(
+        "ext:rs",
+        SearchOptions {
+            root: dir.path().to_path_buf(),
+            ..Default::default()
+        },
+    )?;
+
+    let mut ok = Vec::new();
+    let mut errs = Vec::new();
+    for item in iter {
+        match item {
+            Ok(r) => ok.push(r),
+            Err(e) => errs.push(e),
+        }
+    }
+    println!("ok: {}, errors: {}", ok.len(), errs.len());
+    Ok(())
+}
+```
+
+### Async Support
+
+`rdump` is synchronous; integrate with async via `spawn_blocking`:
+
+```rust
+use rdump::{search, SearchOptions};
+use tempfile::tempdir;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    std::fs::write(dir.path().join("main.rs"), "fn main() {}")?;
+    let root = dir.path().to_path_buf();
+
+    let results = tokio::task::spawn_blocking(move || {
+        search(
+            "func:main",
+            SearchOptions {
+                root,
+                ..Default::default()
+            },
+        )
+    })
+    .await??;
+
+    println!("Found {}", results.len());
+    Ok(())
+}
+```
+
+### Query Language Reference (Core Predicates)
+
+| Predicate | Description | Example |\n|-----------|-------------|---------|\n| `ext:` | File extension | `ext:rs` |\n| `name:` | File name glob | `name:*test*.rs` |\n| `path:` | Substring in path | `path:src/lib` |\n| `size:` | File size | `size:>10kb` |\n| `modified:` | Modified time | `modified:<2d` |\n| `contains:` | Literal content | `contains:\"TODO\"` |\n| `matches:` | Regex content | `matches:\"fn [a-z_]+\"` |\n| `func:` | Function or method | `func:main` |\n| `class:`/`struct:` | Type definitions | `struct:User` |\n| `call:` | Function/method call | `call:process` |\n| `import:` | Imports/uses | `import:serde` |\n| `hook:` | React hook | `hook:useState` |\n| `customhook:` | Custom React hook | `customhook:useAuth` |\n\nCombine with `&`, `|`, `!`, and parentheses: `ext:rs & (func:new | func:default)`.\n\n### Links\n- Rustdoc: run `cargo doc --open` locally; docs.rs after publish\n- Examples: `examples/basic_search.rs`, `examples/streaming_search.rs`\n\n---\n\n## 10. Extending `rdump`: Adding a New Language\n*** End Patch
 Adding support for a new language is possible if there is a tree-sitter grammar available for it. This involves:
 1.  Adding the `tree-sitter-` grammar crate as a dependency in `Cargo.toml`.
 2.  Creating a new module in `src/predicates/code_aware/profiles/` (e.g., `lua.rs`).

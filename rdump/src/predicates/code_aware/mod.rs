@@ -291,7 +291,9 @@ mod tests {
         let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
-        let result = evaluator.select_language_profile("rs", &mut context).unwrap();
+        let result = evaluator
+            .select_language_profile("rs", &mut context)
+            .unwrap();
         assert!(result.is_some());
         let (key, profile) = result.unwrap();
         assert_eq!(key, "rs");
@@ -307,7 +309,9 @@ mod tests {
         let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
-        let result = evaluator.select_language_profile("xyz", &mut context).unwrap();
+        let result = evaluator
+            .select_language_profile("xyz", &mut context)
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -323,7 +327,9 @@ mod tests {
         let evaluator = CodeAwareEvaluator::new(settings);
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
-        let result = evaluator.select_language_profile("sql", &mut context).unwrap();
+        let result = evaluator
+            .select_language_profile("sql", &mut context)
+            .unwrap();
         assert!(result.is_some());
         let (key, _) = result.unwrap();
         assert_eq!(key, "sqlpg");
@@ -354,7 +360,9 @@ mod tests {
         let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "main").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Func, "main")
+            .unwrap();
         assert!(!result.is_match());
     }
 
@@ -368,7 +376,9 @@ mod tests {
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
         // CSS doesn't support func predicate
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "main").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Func, "main")
+            .unwrap();
         assert!(!result.is_match());
     }
 
@@ -381,7 +391,9 @@ mod tests {
         let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "main").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Func, "main")
+            .unwrap();
         assert!(result.is_match());
     }
 
@@ -394,7 +406,9 @@ mod tests {
         let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "nonexistent").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Func, "nonexistent")
+            .unwrap();
         assert!(!result.is_match());
     }
 
@@ -408,7 +422,9 @@ mod tests {
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
         // Import predicate uses contains matching
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Import, "HashMap").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Import, "HashMap")
+            .unwrap();
         assert!(result.is_match());
     }
 
@@ -421,7 +437,9 @@ mod tests {
         let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Comment, "TODO").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Comment, "TODO")
+            .unwrap();
         assert!(result.is_match());
     }
 
@@ -434,7 +452,9 @@ mod tests {
         let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Str, "hello").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Str, "hello")
+            .unwrap();
         assert!(result.is_match());
     }
 
@@ -447,7 +467,9 @@ mod tests {
         let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Call, "println").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Call, "println")
+            .unwrap();
         assert!(result.is_match());
     }
 
@@ -461,7 +483,9 @@ mod tests {
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
         // Wildcard "." should match any function
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, ".").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Func, ".")
+            .unwrap();
         assert!(result.is_match());
     }
 
@@ -475,7 +499,9 @@ mod tests {
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());
 
         // No extension means unsupported
-        let result = evaluator.evaluate(&mut context, &PredicateKey::Func, "main").unwrap();
+        let result = evaluator
+            .evaluate(&mut context, &PredicateKey::Func, "main")
+            .unwrap();
         assert!(!result.is_match());
     }
 }
