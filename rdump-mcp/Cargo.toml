@@ -5,9 +5,10 @@ edition = "2021"
 
 description = "MCP server for rdump SDK"
 license = "MIT"
+repository = "https://github.com/almaclaine/rdump"
 
 [dependencies]
-rdump = { path = "../rdump" }
+rdump = { version = "0.1.8", path = "../rdump" }
 turbomcp = { version = "2.3.7", default-features = false, features = ["minimal"] }
 tokio = { version = "1.47", features = ["rt-multi-thread", "macros"] }
 serde = { version = "1.0", features = ["derive"] }

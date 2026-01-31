@@ -1,0 +1,91 @@
+name: rdump-mcp
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run tests
+        run: |
+          cargo test --manifest-path rdump/Cargo.toml
+          cargo test --manifest-path rdump-mcp/Cargo.toml
+
+  publish:
+    name: publish
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+            bin_ext: ""
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+            bin_ext: ""
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+            bin_ext: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+            bin_ext: ".exe"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build release binaries
+        run: |
+          cargo build --release --target ${{ matrix.target }} --manifest-path rdump/Cargo.toml
+          cargo build --release --target ${{ matrix.target }} --manifest-path rdump-mcp/Cargo.toml
+      - name: Package release (unix)
+        if: matrix.archive_ext == 'tar.gz'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp rdump/target/${{ matrix.target }}/release/rdump${{ matrix.bin_ext }} dist/rdump${{ matrix.bin_ext }}
+          cp rdump-mcp/target/${{ matrix.target }}/release/rdump-mcp${{ matrix.bin_ext }} dist/rdump-mcp${{ matrix.bin_ext }}
+          tar -czf dist/rdump-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }} -C dist rdump${{ matrix.bin_ext }}
+          tar -czf dist/rdump-mcp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }} -C dist rdump-mcp${{ matrix.bin_ext }}
+      - name: Package release (windows)
+        if: matrix.archive_ext == 'zip'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp rdump/target/${{ matrix.target }}/release/rdump${{ matrix.bin_ext }} dist/rdump${{ matrix.bin_ext }}
+          cp rdump-mcp/target/${{ matrix.target }}/release/rdump-mcp${{ matrix.bin_ext }} dist/rdump-mcp${{ matrix.bin_ext }}
+          7z a dist/rdump-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }} ./dist/rdump${{ matrix.bin_ext }}
+          7z a dist/rdump-mcp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }} ./dist/rdump-mcp${{ matrix.bin_ext }}
+      - name: Publish to crates.io
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          cargo publish --manifest-path rdump/Cargo.toml --locked
+          for attempt in 1 2 3 4 5; do
+            cargo publish --manifest-path rdump-mcp/Cargo.toml --locked && break
+            echo "rdump-mcp publish failed; retrying in 20s..."
+            sleep 20
+          done
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
