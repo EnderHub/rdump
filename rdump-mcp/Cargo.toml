@@ -1,0 +1,21 @@
+[package]
+name = "rdump-mcp"
+version = "0.1.0"
+edition = "2021"
+
+description = "MCP server for rdump SDK"
+license = "MIT"
+
+[dependencies]
+rdump = { path = "../rdump" }
+turbomcp = { version = "2.3.7", default-features = false, features = ["minimal"] }
+tokio = { version = "1.47", features = ["rt-multi-thread", "macros"] }
+serde = { version = "1.0", features = ["derive"] }
+schemars = "1.0"
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3.10.1"
+turbomcp-client = { version = "2.3.7", default-features = false, features = ["stdio"] }
+turbomcp-transport = { version = "2.3.7", default-features = false, features = ["stdio"] }
+turbomcp-protocol = { version = "2.3.7", default-features = false }

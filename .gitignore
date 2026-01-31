@@ -1,6 +1,7 @@
 # Rust build artifacts
 # Ignore the 'target' directory inside the 'rdump' subdirectory
 rdump/target/
+rdump-mcp/target/
 
 # Node.js dependencies
 # Ignore the 'node_modules' directory inside the 'rdump' subdirectory
