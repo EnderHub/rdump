@@ -10,7 +10,7 @@ repository = "https://github.com/almaclaine/rdump"
 [dependencies]
 rdump = { version = "0.1.8", path = "../rdump" }
 turbomcp = { version = "2.3.7", default-features = false, features = ["minimal"] }
-tokio = { version = "1.47", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "sync"] }
 serde = { version = "1.0", features = ["derive"] }
 schemars = "1.0"
 serde_json = "1.0"

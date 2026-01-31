@@ -5,6 +5,8 @@ pub mod responses;
 pub mod search;
 pub mod types;
 
+use std::sync::Arc;
+
 use docs::{build_rql_reference, build_sdk_reference, format_rql_reference_text, format_sdk_reference_text};
 use languages::{describe_language, format_language_list_text, format_language_text, list_languages};
 use responses::tool_result;
@@ -22,9 +24,20 @@ use turbomcp::{
 use turbomcp::turbomcp_protocol::types::{
     ReadResourceResult, ResourceContent, TextResourceContents,
 };
+use tokio::sync::Semaphore;
 
-#[derive(Clone, Default)]
-pub struct RdumpServer;
+#[derive(Clone)]
+pub struct RdumpServer {
+    search_semaphore: Arc<Semaphore>,
+}
+
+impl Default for RdumpServer {
+    fn default() -> Self {
+        Self {
+            search_semaphore: Arc::new(Semaphore::new(default_max_concurrent_searches())),
+        }
+    }
+}
 
 impl RdumpServer {
     fn search_tool(&self, args: SearchArgs) -> McpResult<SearchResponse> {
@@ -85,7 +98,21 @@ impl RdumpServer {
                     let server = server.clone();
                     async move {
                         let args: SearchArgs = parse_args(&req)?;
-                        let response = server.search_tool(args).map_err(to_server_error)?;
+                        let permit = server
+                            .search_semaphore
+                            .clone()
+                            .acquire_owned()
+                            .await
+                            .map_err(|_| ServerError::handler("Search limiter is closed"))?;
+                        let response = tokio::task::spawn_blocking(move || {
+                            let _permit = permit;
+                            server.search_tool(args)
+                        })
+                        .await
+                        .map_err(|err| {
+                            ServerError::handler(format!("Search task failed to join: {err}"))
+                        })?
+                        .map_err(to_server_error)?;
                         let text = format_search_text(&response);
                         tool_result(&response, text).map_err(to_server_error)
                     }
@@ -238,6 +265,18 @@ impl RdumpServer {
 
 pub async fn run_stdio() -> Result<(), Box<dyn std::error::Error>> {
     RdumpServer::default().run_custom_stdio().await
+}
+
+fn default_max_concurrent_searches() -> usize {
+    std::env::var("RDUMP_MCP_MAX_CONCURRENT_SEARCHES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|value| value.get())
+                .unwrap_or(4)
+        })
 }
 
 fn tool_schema<T: schemars::JsonSchema>() -> ToolInputSchema {
