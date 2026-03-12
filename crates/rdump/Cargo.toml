@@ -1,6 +1,6 @@
 [package]
 name = "rdump"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2021"
 description = "A fast, expressive, and language-aware file search tool."
 authors = ["rdump contributors"]
@@ -16,7 +16,7 @@ cli = ["dep:clap"]
 async = ["dep:tokio", "dep:tokio-stream", "dep:futures"]
 
 [dependencies]
-rdump-contracts = { path = "../rdump-contracts" }
+rdump-contracts = { version = "0.1.0", path = "../rdump-contracts" }
 clap = { version = "4.5.60", features = ["derive"], optional = true }
 anyhow = "1.0.102"
 ignore = "0.4.25"

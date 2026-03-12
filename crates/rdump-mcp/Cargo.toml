@@ -1,6 +1,6 @@
 [package]
 name = "rdump-mcp"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 description = "MCP server for rdump SDK"
@@ -8,8 +8,8 @@ license = "MIT"
 repository = "https://github.com/almaclaine/rdump"
 
 [dependencies]
-rdump = { version = "0.1.8", path = "../rdump" }
-rdump-contracts = { path = "../rdump-contracts" }
+rdump = { version = "0.1.9", path = "../rdump" }
+rdump-contracts = { version = "0.1.0", path = "../rdump-contracts" }
 turbomcp = { version = "3.0.1", default-features = false, features = ["minimal"] }
 turbomcp-server = { version = "3.0.1", default-features = false, features = ["stdio"] }
 tokio = { version = "1.50", features = ["rt-multi-thread", "macros", "sync", "io-util", "process"] }
