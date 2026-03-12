@@ -32,3 +32,44 @@ fn test_formatter_merges_overlapping_hunks() {
         .stdout(predicate::str::contains("line 5"))
         .stdout(predicate::str::contains("...").not());
 }
+
+#[test]
+fn test_cat_and_hunks_preserve_crlf_line_endings() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let file_path = root.join("test.txt");
+    fs::write(&file_path, b"line 1\r\nmatch here\r\nline 3\r\n").unwrap();
+
+    let mut cat_cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    let cat_output = cat_cmd
+        .current_dir(root)
+        .args(["search", "contains:match", "--format", "cat"])
+        .output()
+        .unwrap();
+    assert!(cat_output.status.success());
+    assert!(cat_output.stdout.windows(2).any(|bytes| bytes == b"\r\n"));
+
+    let mut hunks_cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    let hunks_output = hunks_cmd
+        .current_dir(root)
+        .args(["search", "contains:match", "--format", "hunks"])
+        .output()
+        .unwrap();
+    assert!(hunks_output.status.success());
+    assert!(hunks_output.stdout.windows(2).any(|bytes| bytes == b"\r\n"));
+}
+
+#[test]
+fn test_json_escapes_crlf_line_endings() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let file_path = root.join("test.txt");
+    fs::write(&file_path, b"line 1\r\nmatch here\r\nline 3\r\n").unwrap();
+
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    cmd.current_dir(root)
+        .args(["search", "contains:match", "--format", "json"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\\r\\n"));
+}

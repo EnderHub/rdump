@@ -68,6 +68,23 @@ fn test_sql_mysql_dialect_flag_and_call() {
 }
 
 #[test]
+fn test_sql_strict_fails_on_wrong_dialect_instead_of_falling_back() {
+    let dir = setup_fixture("sql_mysql");
+
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    cmd.current_dir(dir.path());
+    cmd.arg("search")
+        .arg("call:bump_count & ext:sql")
+        .arg("--dialect")
+        .arg("postgres")
+        .arg("--sql-strict");
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Strict SQL mode"));
+}
+
+#[test]
 fn test_sql_sqlite_comment_and_string() {
     let dir = setup_fixture("sql_sqlite");
 

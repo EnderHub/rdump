@@ -1,0 +1,197 @@
+{
+  "schema_version": "rdump.v1",
+  "predicates": [
+    {
+      "name": "call",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "class",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "comment",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "component",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "contains",
+      "category": "content",
+      "aliases": [
+        "c"
+      ],
+      "deprecated_aliases": [
+        "content"
+      ]
+    },
+    {
+      "name": "customhook",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "def",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "element",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "enum",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "ext",
+      "category": "metadata",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "func",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "hook",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "impl",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "import",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "in",
+      "category": "metadata",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "interface",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "macro",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "matches",
+      "category": "content",
+      "aliases": [
+        "m"
+      ],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "modified",
+      "category": "metadata",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "module",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "name",
+      "category": "metadata",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "object",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "path",
+      "category": "metadata",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "path_exact",
+      "category": "metadata",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "prop",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "protocol",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "size",
+      "category": "metadata",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "str",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "struct",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "trait",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    },
+    {
+      "name": "type",
+      "category": "semantic",
+      "aliases": [],
+      "deprecated_aliases": []
+    }
+  ]
+}

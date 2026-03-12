@@ -1,7 +1,7 @@
 pub mod code_aware;
 pub mod contains;
 pub mod ext;
-mod helpers;
+pub(crate) mod helpers;
 pub mod in_path;
 pub mod matches;
 pub mod modified;
@@ -32,6 +32,68 @@ pub trait PredicateEvaluator {
         key: &PredicateKey,
         value: &str,
     ) -> Result<MatchResult>;
+}
+
+pub fn metadata_predicate_keys() -> Vec<PredicateKey> {
+    vec![
+        PredicateKey::Ext,
+        PredicateKey::Name,
+        PredicateKey::Path,
+        PredicateKey::PathExact,
+        PredicateKey::In,
+        PredicateKey::Size,
+        PredicateKey::Modified,
+    ]
+}
+
+pub fn content_predicate_keys() -> Vec<PredicateKey> {
+    vec![PredicateKey::Contains, PredicateKey::Matches]
+}
+
+pub fn semantic_predicate_keys() -> Vec<PredicateKey> {
+    vec![
+        PredicateKey::Def,
+        PredicateKey::Func,
+        PredicateKey::Import,
+        PredicateKey::Class,
+        PredicateKey::Struct,
+        PredicateKey::Enum,
+        PredicateKey::Interface,
+        PredicateKey::Trait,
+        PredicateKey::Type,
+        PredicateKey::Impl,
+        PredicateKey::Macro,
+        PredicateKey::Module,
+        PredicateKey::Object,
+        PredicateKey::Protocol,
+        PredicateKey::Comment,
+        PredicateKey::Str,
+        PredicateKey::Call,
+    ]
+}
+
+pub fn react_predicate_keys() -> Vec<PredicateKey> {
+    vec![
+        PredicateKey::Component,
+        PredicateKey::Element,
+        PredicateKey::Hook,
+        PredicateKey::CustomHook,
+        PredicateKey::Prop,
+    ]
+}
+
+pub fn validate_predicate_value(key: &PredicateKey, value: &str) -> Result<()> {
+    match key {
+        PredicateKey::Size => {
+            helpers::parse_and_compare_size(0, value)?;
+            Ok(())
+        }
+        PredicateKey::Modified => {
+            helpers::parse_and_compare_time(std::time::SystemTime::now(), value)?;
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Creates a predicate registry with only the fast, metadata-based predicates.

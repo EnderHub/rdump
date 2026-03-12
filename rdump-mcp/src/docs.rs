@@ -1,7 +1,33 @@
-use crate::types::{FieldDoc, FunctionDoc, RqlReference, SdkReference, TypeDoc};
+use crate::types::{
+    ErrorMode, FieldDoc, FunctionDoc, Limits, OutputMode, RqlReference, SdkReference,
+    SearchRequest, SearchResponse, TypeDoc,
+};
+use rdump::predicates::{
+    content_predicate_keys, metadata_predicate_keys, react_predicate_keys, semantic_predicate_keys,
+};
+use rdump_contracts::{LimitValue, SearchStatus};
 
 pub fn build_rql_reference() -> RqlReference {
+    let metadata_predicates = metadata_predicate_keys()
+        .into_iter()
+        .map(|key| key.as_ref().to_string())
+        .filter(|name| name != "path_exact")
+        .collect();
+    let content_predicates = content_predicate_keys()
+        .into_iter()
+        .map(|key| key.as_ref().to_string())
+        .collect();
+    let semantic_predicates = semantic_predicate_keys()
+        .into_iter()
+        .map(|key| key.as_ref().to_string())
+        .collect();
+    let react_predicates = react_predicate_keys()
+        .into_iter()
+        .map(|key| key.as_ref().to_string())
+        .collect();
+
     RqlReference {
+        schema_version: crate::types::SCHEMA_VERSION.to_string(),
         operators: vec!["AND: &", "OR: |", "NOT: !", "Grouping: ( )"]
             .into_iter()
             .map(String::from)
@@ -10,35 +36,31 @@ pub fn build_rql_reference() -> RqlReference {
             "Quote values with spaces using single or double quotes.",
             "Examples: contains:'fn main' or name:'test file.rs'.",
             "Implicit AND is not supported; use '&'.",
+            "Use backslashes inside quoted values when you need literal quote characters.",
+            "Glob characters remain literal inside quoted predicate values unless the predicate itself is glob-aware.",
+            "Unicode is preserved in quoted values; prefer exact quotes instead of shell escaping when possible.",
         ]
         .into_iter()
         .map(String::from)
         .collect(),
-        metadata_predicates: vec!["ext", "name", "path", "in", "size", "modified"]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        content_predicates: vec!["contains", "matches"]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        semantic_predicates: vec![
-            "def", "func", "import", "call", "class", "struct", "enum", "interface", "trait",
-            "type", "impl", "macro", "module", "object", "protocol", "comment", "str",
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect(),
-        react_predicates: vec!["component", "element", "hook", "customhook", "prop"]
-            .into_iter()
-            .map(String::from)
-            .collect(),
+        aliases: vec![
+            "contains -> c".to_string(),
+            "matches -> m".to_string(),
+        ],
+        deprecated_predicates: vec!["content -> contains".to_string()],
+        metadata_predicates,
+        content_predicates,
+        semantic_predicates,
+        react_predicates,
         examples: vec![
             "ext:rs & func:main",
             "path:src & (struct:User | enum:UserState)",
             "import:serde & contains:derive",
             "ext:tsx & component:Button & hook:useState",
             "modified:<2d & size:>10kb",
+            "contains:\"literal * glob\"",
+            "name:'unicode_名前.py'",
+            "matches:'^fn\\\\s+main'",
         ]
         .into_iter()
         .map(String::from)
@@ -61,6 +83,36 @@ pub fn build_sdk_reference() -> SdkReference {
             signature: "search(query: &str, options: SearchOptions) -> Result<Vec<SearchResult>>"
                 .to_string(),
             description: "Collects all results into memory.".to_string(),
+        },
+        FunctionDoc {
+            name: "search_with_stats".to_string(),
+            signature:
+                "search_with_stats(query: &str, options: SearchOptions) -> Result<SearchReport>"
+                    .to_string(),
+            description: "Collects results and returns engine statistics plus diagnostics."
+                .to_string(),
+        },
+        FunctionDoc {
+            name: "search_path_iter".to_string(),
+            signature:
+                "search_path_iter(query: &str, options: SearchOptions) -> Result<SearchPathIterator>"
+                    .to_string(),
+            description: "Streams matching paths without loading file content.".to_string(),
+        },
+        FunctionDoc {
+            name: "search_paths".to_string(),
+            signature: "search_paths(query: &str, options: SearchOptions) -> Result<Vec<PathBuf>>"
+                .to_string(),
+            description: "Collects matching paths without materializing SearchResult content."
+                .to_string(),
+        },
+        FunctionDoc {
+            name: "explain_query".to_string(),
+            signature:
+                "explain_query(query: &str, options: &SearchOptions) -> Result<QueryExplanation>"
+                    .to_string(),
+            description: "Explains preset expansion, predicate classes, and evaluation stages."
+                .to_string(),
         },
     ];
 
@@ -113,6 +165,16 @@ pub fn build_sdk_reference() -> SdkReference {
             description: "Full file content.".to_string(),
             default: "".to_string(),
         },
+        FieldDoc {
+            name: "content_state".to_string(),
+            description: "Whether content was loaded, lossy-decoded, or skipped.".to_string(),
+            default: "loaded".to_string(),
+        },
+        FieldDoc {
+            name: "diagnostics".to_string(),
+            description: "Per-result warnings collected while loading content.".to_string(),
+            default: "[]".to_string(),
+        },
     ];
 
     let match_fields = vec![
@@ -160,6 +222,44 @@ pub fn build_sdk_reference() -> SdkReference {
             fields: result_fields,
         },
         TypeDoc {
+            name: "SearchReport".to_string(),
+            description: "Collected results plus search stats and diagnostics.".to_string(),
+            fields: vec![
+                FieldDoc {
+                    name: "results".to_string(),
+                    description: "Collected SearchResult values.".to_string(),
+                    default: "[]".to_string(),
+                },
+                FieldDoc {
+                    name: "stats".to_string(),
+                    description: "Engine-level counts for discovery and matching.".to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "diagnostics".to_string(),
+                    description: "Engine and content diagnostics aggregated across the search."
+                        .to_string(),
+                    default: "[]".to_string(),
+                },
+            ],
+        },
+        TypeDoc {
+            name: "QueryExplanation".to_string(),
+            description: "Planner output for effective queries and predicate staging.".to_string(),
+            fields: vec![
+                FieldDoc {
+                    name: "effective_query".to_string(),
+                    description: "Query after preset expansion.".to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "estimated_cost".to_string(),
+                    description: "Rough low/medium/high cost classification.".to_string(),
+                    default: "low".to_string(),
+                },
+            ],
+        },
+        TypeDoc {
             name: "Match".to_string(),
             description: "Single match span within a file.".to_string(),
             fields: match_fields,
@@ -168,6 +268,8 @@ pub fn build_sdk_reference() -> SdkReference {
 
     let notes = vec![
         "Use search_iter for large repos to avoid loading all results at once.",
+        "Use search_path_iter/search_paths when you only need matching file paths.",
+        "Use explain_query to inspect preset expansion and evaluation stages before running a search.",
         "RQL supports logical operators &, |, ! and parentheses.",
     ]
     .into_iter()
@@ -175,6 +277,7 @@ pub fn build_sdk_reference() -> SdkReference {
     .collect();
 
     SdkReference {
+        schema_version: crate::types::SCHEMA_VERSION.to_string(),
         functions,
         types,
         notes,
@@ -256,9 +359,86 @@ pub fn format_sdk_reference_text() -> String {
     lines.join("\n")
 }
 
+pub fn format_schema_examples_text() -> String {
+    let request = SearchRequest {
+        query: "ext:rs & func:main".to_string(),
+        root: Some(".".to_string()),
+        presets: vec!["rust".to_string()],
+        output: Some(OutputMode::Summary),
+        limits: Some(Limits {
+            max_results: LimitValue::Value(25),
+            max_matches_per_file: LimitValue::Value(5),
+            max_bytes_per_file: LimitValue::Unlimited,
+            max_total_bytes: LimitValue::Value(50_000),
+            max_match_bytes: LimitValue::Value(200),
+            max_snippet_bytes: LimitValue::Value(2_000),
+            max_errors: LimitValue::Value(5),
+        }),
+        error_mode: ErrorMode::SkipErrors,
+        ..Default::default()
+    };
+
+    let response = SearchResponse {
+        schema_version: crate::types::SCHEMA_VERSION.to_string(),
+        schema_reference: "rdump://docs/sdk".to_string(),
+        status: SearchStatus::TruncatedSuccess,
+        coordinate_semantics: rdump::request::coordinate_semantics(),
+        query: request.query.clone(),
+        effective_query: "(ext:rs) & (func:main)".to_string(),
+        root: ".".to_string(),
+        output: OutputMode::Summary,
+        error_mode: ErrorMode::SkipErrors,
+        results: Vec::new(),
+        stats: rdump_contracts::SearchStats::default(),
+        diagnostics: Vec::new(),
+        errors: Vec::new(),
+        truncated: true,
+        truncation_reason: Some("max_results".to_string()),
+        next_offset: Some(25),
+        continuation_token: Some("session:v1:123:25:deadbeefdeadbeef".to_string()),
+        page_size: Some(25),
+    };
+
+    let tool_call = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+            "name": "search",
+            "arguments": request,
+            "_meta": {
+                "progressToken": "search-7"
+            }
+        }
+    });
+
+    let progress = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/progress",
+        "params": {
+            "progressToken": "search-7",
+            "progress": 12,
+            "total": 25,
+            "message": "phase `evaluate`"
+        }
+    });
+
+    format!(
+        "Sample SearchRequest:\n{}\n\nSample MCP tools/call:\n{}\n\nSample progress notification:\n{}\n\nSample SearchResponse:\n{}",
+        serde_json::to_string_pretty(&request).expect("request example should serialize"),
+        serde_json::to_string_pretty(&tool_call).expect("tool call example should serialize"),
+        serde_json::to_string_pretty(&progress).expect("progress example should serialize"),
+        serde_json::to_string_pretty(&response).expect("response example should serialize"),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rdump::predicates::{
+        content_predicate_keys, metadata_predicate_keys, react_predicate_keys,
+        semantic_predicate_keys,
+    };
 
     #[test]
     fn rql_reference_has_examples() {
@@ -281,10 +461,55 @@ mod tests {
     #[test]
     fn sdk_reference_includes_search_options() {
         let reference = build_sdk_reference();
-        let has_search_options = reference
-            .types
-            .iter()
-            .any(|ty| ty.name == "SearchOptions");
+        let has_search_options = reference.types.iter().any(|ty| ty.name == "SearchOptions");
         assert!(has_search_options);
+    }
+
+    #[test]
+    fn rql_reference_matches_core_predicate_inventory() {
+        let reference = build_rql_reference();
+        let metadata: Vec<_> = metadata_predicate_keys()
+            .into_iter()
+            .map(|key| key.as_ref().to_string())
+            .filter(|name| name != "path_exact")
+            .collect();
+        let content: Vec<_> = content_predicate_keys()
+            .into_iter()
+            .map(|key| key.as_ref().to_string())
+            .collect();
+        let semantic: Vec<_> = semantic_predicate_keys()
+            .into_iter()
+            .map(|key| key.as_ref().to_string())
+            .collect();
+        let react: Vec<_> = react_predicate_keys()
+            .into_iter()
+            .map(|key| key.as_ref().to_string())
+            .collect();
+
+        assert_eq!(reference.metadata_predicates, metadata);
+        assert_eq!(reference.content_predicates, content);
+        assert_eq!(reference.semantic_predicates, semantic);
+        assert_eq!(reference.react_predicates, react);
+    }
+
+    #[test]
+    fn sdk_reference_includes_current_library_surface() {
+        let reference = build_sdk_reference();
+        let function_names: Vec<_> = reference
+            .functions
+            .iter()
+            .map(|function| function.name.as_str())
+            .collect();
+
+        for expected in [
+            "search_iter",
+            "search",
+            "search_with_stats",
+            "search_path_iter",
+            "search_paths",
+            "explain_query",
+        ] {
+            assert!(function_names.contains(&expected));
+        }
     }
 }

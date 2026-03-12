@@ -1,0 +1,997 @@
+{
+  "schema_version": "rdump.v1",
+  "capture_convention": "Language-profile queries that emit hunks must expose tree-sitter captures named @match.",
+  "languages": [
+    {
+      "id": "sh",
+      "name": "Bash",
+      "extensions": [
+        "sh",
+        "bash"
+      ],
+      "aliases": [
+        "bash",
+        "sh"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "str"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "c",
+      "name": "C",
+      "extensions": [
+        "c",
+        "h"
+      ],
+      "aliases": [
+        "c"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "enum",
+          "func",
+          "import",
+          "macro",
+          "str",
+          "struct",
+          "type"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "cs",
+      "name": "C#",
+      "extensions": [
+        "cs",
+        "csx"
+      ],
+      "aliases": [
+        "cs",
+        "csx"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "def",
+          "enum",
+          "func",
+          "import",
+          "interface",
+          "str",
+          "struct",
+          "type"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "cpp",
+      "name": "C++",
+      "extensions": [
+        "cpp",
+        "cc",
+        "cxx",
+        "hpp",
+        "hh",
+        "hxx"
+      ],
+      "aliases": [
+        "cc",
+        "cpp",
+        "cxx",
+        "hh",
+        "hpp",
+        "hxx"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "def",
+          "enum",
+          "func",
+          "import",
+          "macro",
+          "str",
+          "struct"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "css",
+      "name": "CSS",
+      "extensions": [
+        "css"
+      ],
+      "aliases": [
+        "css"
+      ],
+      "support_tier": "partial",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "import",
+          "str",
+          "type"
+        ]
+      },
+      "semantic_caveats": [
+        "CSS semantic coverage is partial and focuses on selectors and declarations, not cascade resolution.",
+        "Support tier is partial; some language constructs may not produce semantic captures yet."
+      ]
+    },
+    {
+      "id": "ex",
+      "name": "Elixir",
+      "extensions": [
+        "ex",
+        "exs"
+      ],
+      "aliases": [
+        "ex",
+        "exs"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "module",
+          "protocol",
+          "str"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "go",
+      "name": "Go",
+      "extensions": [
+        "go"
+      ],
+      "aliases": [
+        "go"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "interface",
+          "str",
+          "struct",
+          "type"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "html",
+      "name": "HTML",
+      "extensions": [
+        "html",
+        "htm"
+      ],
+      "aliases": [
+        "html"
+      ],
+      "support_tier": "partial",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "import",
+          "str"
+        ]
+      },
+      "semantic_caveats": [
+        "HTML semantic coverage is partial and focuses on structural nodes rather than browser/runtime behavior.",
+        "Support tier is partial; some language constructs may not produce semantic captures yet."
+      ]
+    },
+    {
+      "id": "hs",
+      "name": "Haskell",
+      "extensions": [
+        "hs",
+        "lhs"
+      ],
+      "aliases": [
+        "hs",
+        "lhs"
+      ],
+      "support_tier": "experimental",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "module",
+          "str",
+          "type"
+        ]
+      },
+      "semantic_caveats": [
+        "This profile is experimental; expect narrower predicate coverage and fewer regression fixtures."
+      ]
+    },
+    {
+      "id": "java",
+      "name": "Java",
+      "extensions": [
+        "java"
+      ],
+      "aliases": [
+        "java"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "def",
+          "enum",
+          "func",
+          "import",
+          "interface",
+          "str"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "js",
+      "name": "JavaScript",
+      "extensions": [
+        "js"
+      ],
+      "aliases": [
+        "js"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "customhook",
+          "def",
+          "func",
+          "hook",
+          "import",
+          "str"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "lua",
+      "name": "Lua",
+      "extensions": [
+        "lua"
+      ],
+      "aliases": [
+        "lua"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "str"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "ml",
+      "name": "OCaml",
+      "extensions": [
+        "ml",
+        "mli"
+      ],
+      "aliases": [
+        "ml",
+        "mli"
+      ],
+      "support_tier": "experimental",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "module",
+          "str",
+          "type"
+        ]
+      },
+      "semantic_caveats": [
+        "This profile is experimental; expect narrower predicate coverage and fewer regression fixtures."
+      ]
+    },
+    {
+      "id": "php",
+      "name": "PHP",
+      "extensions": [
+        "php",
+        "phtml"
+      ],
+      "aliases": [
+        "php"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "interface",
+          "str",
+          "trait"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "py",
+      "name": "Python",
+      "extensions": [
+        "py"
+      ],
+      "aliases": [
+        "py"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "str"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "jsx",
+      "name": "React",
+      "extensions": [
+        "jsx",
+        "tsx"
+      ],
+      "aliases": [
+        "jsx",
+        "tsx"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "comment",
+          "component",
+          "customhook",
+          "element",
+          "hook",
+          "import",
+          "prop",
+          "str"
+        ]
+      },
+      "semantic_caveats": [
+        "React-specific predicates are only available on JSX/TSX profiles and remain more permissive than language-core predicates."
+      ]
+    },
+    {
+      "id": "rb",
+      "name": "Ruby",
+      "extensions": [
+        "rb"
+      ],
+      "aliases": [
+        "rb"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "module",
+          "str",
+          "type"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "rs",
+      "name": "Rust",
+      "extensions": [
+        "rs"
+      ],
+      "aliases": [
+        "rs"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "enum",
+          "func",
+          "impl",
+          "import",
+          "macro",
+          "module",
+          "str",
+          "struct",
+          "trait",
+          "type"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "sql",
+      "name": "SQL (Generic)",
+      "extensions": [
+        "sql"
+      ],
+      "aliases": [
+        "sql"
+      ],
+      "support_tier": "partial",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "str"
+        ]
+      },
+      "semantic_caveats": [
+        "SQL dialect selection is heuristic unless overridden; enable strict mode to fail instead of falling back.",
+        "Support tier is partial; some language constructs may not produce semantic captures yet."
+      ]
+    },
+    {
+      "id": "sqlmysql",
+      "name": "SQL (MySQL)",
+      "extensions": [
+        "mysql"
+      ],
+      "aliases": [
+        "sqlmysql"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "str"
+        ]
+      },
+      "semantic_caveats": [
+        "SQL dialect selection is heuristic unless overridden; enable strict mode to fail instead of falling back."
+      ]
+    },
+    {
+      "id": "sqlpg",
+      "name": "SQL (Postgres)",
+      "extensions": [
+        "psql",
+        "pgsql"
+      ],
+      "aliases": [
+        "sqlpg"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "str"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "sqlsqlite",
+      "name": "SQL (SQLite)",
+      "extensions": [
+        "sqlite"
+      ],
+      "aliases": [
+        "sqlsqlite"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "str"
+        ]
+      },
+      "semantic_caveats": [
+        "SQL dialect selection is heuristic unless overridden; enable strict mode to fail instead of falling back."
+      ]
+    },
+    {
+      "id": "scala",
+      "name": "Scala",
+      "extensions": [
+        "scala"
+      ],
+      "aliases": [
+        "scala"
+      ],
+      "support_tier": "experimental",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "object",
+          "str",
+          "trait",
+          "type"
+        ]
+      },
+      "semantic_caveats": [
+        "This profile is experimental; expect narrower predicate coverage and fewer regression fixtures."
+      ]
+    },
+    {
+      "id": "swift",
+      "name": "Swift",
+      "extensions": [
+        "swift"
+      ],
+      "aliases": [
+        "swift"
+      ],
+      "support_tier": "experimental",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "def",
+          "func",
+          "import",
+          "protocol",
+          "str"
+        ]
+      },
+      "semantic_caveats": [
+        "This profile is experimental; expect narrower predicate coverage and fewer regression fixtures."
+      ]
+    },
+    {
+      "id": "ts",
+      "name": "TypeScript",
+      "extensions": [
+        "ts"
+      ],
+      "aliases": [
+        "ts"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "class",
+          "comment",
+          "customhook",
+          "def",
+          "enum",
+          "func",
+          "hook",
+          "import",
+          "interface",
+          "str",
+          "type"
+        ]
+      },
+      "semantic_caveats": []
+    },
+    {
+      "id": "zig",
+      "name": "Zig",
+      "extensions": [
+        "zig"
+      ],
+      "aliases": [
+        "zig"
+      ],
+      "support_tier": "stable",
+      "predicates": {
+        "metadata": [
+          "ext",
+          "name",
+          "path",
+          "in",
+          "size",
+          "modified"
+        ],
+        "content": [
+          "contains",
+          "matches"
+        ],
+        "semantic": [
+          "call",
+          "comment",
+          "def",
+          "enum",
+          "func",
+          "import",
+          "str",
+          "struct",
+          "type"
+        ]
+      },
+      "semantic_caveats": []
+    }
+  ]
+}

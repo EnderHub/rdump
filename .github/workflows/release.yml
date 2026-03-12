@@ -32,7 +32,11 @@ jobs:
           profile: minimal
 
       - name: Build binary
-        run: cargo build --release --manifest-path rdump/Cargo.toml
+        run: |
+          ./scripts/regenerate-generated-docs.sh
+          git diff --exit-code -- docs/generated
+          cargo build --release --manifest-path rdump/Cargo.toml
+          ./rdump/target/release/rdump --help
         
       - name: Rename binary for release
         run: |

@@ -1,16 +1,88 @@
 use crate::evaluator::{FileContext, MatchResult};
 use crate::parser::PredicateKey;
 use crate::predicates::PredicateEvaluator;
-use anyhow::{Context, Result};
-use once_cell::sync::Lazy;
-use regex::Regex;
-use tree_sitter::{Query, QueryCursor, StreamingIterator};
+use anyhow::Result;
+use rdump_contracts::SemanticMatchMode;
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
+mod cache;
+mod execution;
 pub mod profiles;
+mod selection;
 
 #[derive(Debug, Clone, Default)]
 pub struct CodeAwareSettings {
     pub sql_dialect: Option<SqlDialect>,
+    pub sql_strict: bool,
+    pub semantic_budget_ms: Option<u64>,
+    pub max_semantic_matches_per_file: Option<usize>,
+    pub language_override: Option<String>,
+    pub semantic_match_mode: SemanticMatchMode,
+    pub semantic_strict: bool,
+    pub language_debug: bool,
+    pub sql_trace: bool,
+    pub telemetry: Option<Arc<SemanticTelemetry>>,
+}
+
+#[derive(Debug, Default)]
+pub struct SemanticTelemetry {
+    parse_failures_by_language: Mutex<BTreeMap<String, usize>>,
+    budget_exhaustions: AtomicUsize,
+    unsupported_language_skips: AtomicUsize,
+    tree_cache_hits: AtomicUsize,
+    tree_cache_misses: AtomicUsize,
+}
+
+impl SemanticTelemetry {
+    pub fn record_parse_failure(&self, profile_key: &str) {
+        let mut guard = self
+            .parse_failures_by_language
+            .lock()
+            .expect("semantic telemetry parse-failure lock poisoned");
+        *guard.entry(profile_key.to_string()).or_default() += 1;
+    }
+
+    pub fn record_budget_exhaustion(&self) {
+        self.budget_exhaustions.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn record_unsupported_language(&self) {
+        self.unsupported_language_skips
+            .fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn record_tree_cache_hit(&self) {
+        self.tree_cache_hits.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn record_tree_cache_miss(&self) {
+        self.tree_cache_misses.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn parse_failures_by_language(&self) -> BTreeMap<String, usize> {
+        self.parse_failures_by_language
+            .lock()
+            .expect("semantic telemetry parse-failure lock poisoned")
+            .clone()
+    }
+
+    pub fn total_parse_failures(&self) -> usize {
+        self.parse_failures_by_language().values().copied().sum()
+    }
+
+    pub fn budget_exhaustions(&self) -> usize {
+        self.budget_exhaustions.load(Ordering::SeqCst)
+    }
+
+    pub fn tree_cache_hits(&self) -> usize {
+        self.tree_cache_hits.load(Ordering::SeqCst)
+    }
+
+    pub fn tree_cache_misses(&self) -> usize {
+        self.tree_cache_misses.load(Ordering::SeqCst)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,47 +115,40 @@ impl CodeAwareEvaluator {
         Self { settings }
     }
 
-    fn select_language_profile<'a>(
-        &'a self,
+    fn select_language_profile(
+        &self,
         extension: &str,
         context: &mut FileContext,
-    ) -> Result<Option<(String, &'a profiles::LanguageProfile)>> {
-        // SQL gets a dialect-aware path; everything else uses straight extension mapping.
-        if extension.eq_ignore_ascii_case("sql") {
-            let selected_key = self.select_sql_profile(context)?;
-            if let Some(profile) = profiles::get_profile(&selected_key) {
-                return Ok(Some((selected_key, profile)));
-            }
-            return Ok(None);
-        }
-
-        // Non-SQL: a simple direct lookup by extension.
-        let key = extension.to_lowercase();
-        if let Some(profile) = profiles::get_profile(&key) {
-            return Ok(Some((key, profile)));
-        }
-
-        Ok(None)
+    ) -> Result<Option<(String, &'static profiles::LanguageProfile)>> {
+        selection::select_language_profile(&self.settings, extension, context)
     }
 
+    #[cfg(test)]
     fn select_sql_profile(&self, context: &mut FileContext) -> Result<String> {
-        if let Some(cached) = context.sql_profile_key() {
-            return Ok(cached.to_string());
-        }
-
-        if let Some(dialect) = &self.settings.sql_dialect {
-            let key = dialect.key().to_string();
-            context.set_sql_profile_key(&key);
-            return Ok(key);
-        }
-
-        let content = context.get_content()?;
-        let lowered = content.to_lowercase();
-        let detected = detect_sql_dialect(&lowered);
-        let key = detected.unwrap_or(SqlDialect::Generic).key().to_string();
-        context.set_sql_profile_key(&key);
-        Ok(key)
+        selection::select_sql_profile(&self.settings, context)
     }
+
+    fn compiled_query(
+        &self,
+        profile_key: &str,
+        profile: &'static profiles::LanguageProfile,
+        key: &PredicateKey,
+        query: &str,
+    ) -> Result<std::sync::Arc<tree_sitter::Query>> {
+        cache::compiled_query(profile_key, profile, key, query)
+    }
+}
+
+pub fn query_cache_metrics_snapshot() -> (usize, usize) {
+    cache::cache_metrics_snapshot()
+}
+
+pub fn detect_sql_dialect_for_debug(content: &str) -> Option<SqlDialect> {
+    selection::detect_sql_dialect(content)
+}
+
+pub fn detect_sql_dialect_trace_for_debug(content: &str) -> (Option<SqlDialect>, String) {
+    selection::detect_sql_dialect_with_trace(content)
 }
 
 impl PredicateEvaluator for CodeAwareEvaluator {
@@ -102,123 +167,48 @@ impl PredicateEvaluator for CodeAwareEvaluator {
             .to_lowercase();
         let Some((profile_key, mut profile)) = self.select_language_profile(&extension, context)?
         else {
+            if let Some(telemetry) = &self.settings.telemetry {
+                telemetry.record_unsupported_language();
+            }
+            context.push_semantic_skip(
+                crate::SemanticSkipReason::UnsupportedLanguage,
+                format!(
+                    "Skipping semantic evaluation for {} because no supported language profile matched.",
+                    context.path.display()
+                ),
+            );
             return Ok(MatchResult::Boolean(false)); // Not a supported language for this predicate.
         };
 
-        // 2. Get the tree-sitter query string for the specific predicate.
+        // 2. Resolve the execution profile and tree, including SQL fallback when needed.
+        let Some(plan) =
+            execution::resolve_execution_plan(context, profile_key, profile, &self.settings)?
+        else {
+            return Ok(MatchResult::Boolean(false));
+        };
+        profile = plan.profile;
+
+        // 3. Get content and the tree-sitter query for the execution profile.
+        let content = context.get_content_arc()?;
+        if !context.content_state()?.is_loaded() {
+            context.push_semantic_skip(
+                crate::SemanticSkipReason::ContentUnavailable,
+                format!(
+                    "Skipping semantic evaluation for {} because content was not available after safety checks.",
+                    context.path.display()
+                ),
+            );
+            return Ok(MatchResult::Boolean(false));
+        }
         let ts_query_str = match profile.queries.get(key) {
             Some(q) if !q.is_empty() => q,
-            _ => return Ok(MatchResult::Boolean(false)), // Not a supported language for this predicate.
+            _ => return Ok(MatchResult::Boolean(false)),
         };
+        let query = self.compiled_query(&plan.profile_key, profile, key, ts_query_str)?;
 
-        // 3. Get content and lazily get the parsed tree from the file context.
-        let content = context.get_content()?.to_string(); // Clone to avoid borrow issues
-        let tree = match context.get_tree(&profile_key, profile.language.clone()) {
-            Ok(tree) => tree,
-            Err(e) => {
-                if profile_key != SqlDialect::Generic.key() && profile_key.starts_with("sql") {
-                    if let Some(generic_profile) = profiles::get_profile(SqlDialect::Generic.key())
-                    {
-                        context.set_sql_profile_key(SqlDialect::Generic.key());
-                        match context
-                            .get_tree(SqlDialect::Generic.key(), generic_profile.language.clone())
-                        {
-                            Ok(tree) => {
-                                profile = generic_profile;
-                                tree
-                            }
-                            Err(fallback_err) => {
-                                eprintln!(
-                                    "Warning: Failed to parse {} with {} and fallback: {e}; {fallback_err}. Skipping.",
-                                    context.path.display(),
-                                    profile_key
-                                );
-                                return Ok(MatchResult::Boolean(false));
-                            }
-                        }
-                    } else {
-                        eprintln!(
-                            "Warning: Failed to parse {} with {} and no SQL fallback available: {}.",
-                            context.path.display(),
-                            profile_key,
-                            e
-                        );
-                        return Ok(MatchResult::Boolean(false));
-                    }
-                } else {
-                    eprintln!(
-                        "Warning: Failed to parse {}: {}. Skipping.",
-                        context.path.display(),
-                        e
-                    );
-                    return Ok(MatchResult::Boolean(false));
-                }
-            }
-        };
-
-        // 4. Compile the tree-sitter query.
-        let query = Query::new(&profile.language, ts_query_str)
-            .with_context(|| format!("Failed to compile tree-sitter query for key {key:?}"))?;
-        let mut cursor = QueryCursor::new();
-        let mut ranges = Vec::new();
-
-        // 5. Execute the query and check for a match.
-        let mut captures = cursor.matches(&query, tree.root_node(), content.as_bytes());
-
-        while let Some(m) = captures.next() {
-            for capture in m.captures {
-                // We only care about nodes captured with the name `@match`.
-                let capture_name = &query.capture_names()[capture.index as usize];
-                if *capture_name != "match" {
-                    continue;
-                }
-
-                let captured_node = capture.node;
-                let captured_text = captured_node.utf8_text(content.as_bytes())?;
-
-                // Use the correct matching strategy based on the predicate type.
-                let is_match = match key {
-                    // Content-based predicates check for substrings.
-                    PredicateKey::Import | PredicateKey::Comment | PredicateKey::Str => {
-                        captured_text.contains(value)
-                    }
-                    // Hook predicates can match any hook (`hook:.`) or a specific one
-                    PredicateKey::Hook | PredicateKey::CustomHook => {
-                        value == "." || captured_text == value
-                    }
-                    // Calls: allow substring match since callee may include arguments/qualifiers.
-                    PredicateKey::Call => captured_text.contains(value),
-                    // Definition-based predicates require an exact match on the identifier, unless a wildcard is used.
-                    _ => value == "." || captured_text == value,
-                };
-
-                if is_match {
-                    ranges.push(captured_node.range());
-                }
-            }
-        }
-
-        Ok(MatchResult::Hunks(ranges))
+        // 4. Execute the query and build match hunks.
+        execution::execute_captures(&plan.tree, &content, &query, key, value, &self.settings)
     }
-}
-
-static MYSQL_DELIMITER_RE: Lazy<Regex> = Lazy::new(|| Regex::new("(?i)delimiter\\s+//").unwrap());
-static SQLITE_BEGIN_ATOMIC_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new("(?i)begin\\s+atomic").unwrap());
-static POSTGRES_RETURNS_TABLE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new("(?i)returns\\s+table").unwrap());
-
-fn detect_sql_dialect(content: &str) -> Option<SqlDialect> {
-    if MYSQL_DELIMITER_RE.is_match(content) {
-        return Some(SqlDialect::Mysql);
-    }
-    if SQLITE_BEGIN_ATOMIC_RE.is_match(content) {
-        return Some(SqlDialect::Sqlite);
-    }
-    if POSTGRES_RETURNS_TABLE_RE.is_match(content) || content.contains("language plpgsql") {
-        return Some(SqlDialect::Postgres);
-    }
-    None
 }
 
 #[cfg(test)]
@@ -239,31 +229,43 @@ mod tests {
     #[test]
     fn test_detect_sql_dialect_mysql() {
         let content = "DELIMITER //\nCREATE PROCEDURE foo() BEGIN END//";
-        assert_eq!(detect_sql_dialect(content), Some(SqlDialect::Mysql));
+        assert_eq!(
+            selection::detect_sql_dialect(content),
+            Some(SqlDialect::Mysql)
+        );
     }
 
     #[test]
     fn test_detect_sql_dialect_sqlite() {
         let content = "CREATE TRIGGER foo BEGIN ATOMIC UPDATE t; END;";
-        assert_eq!(detect_sql_dialect(content), Some(SqlDialect::Sqlite));
+        assert_eq!(
+            selection::detect_sql_dialect(content),
+            Some(SqlDialect::Sqlite)
+        );
     }
 
     #[test]
     fn test_detect_sql_dialect_postgres() {
         let content = "CREATE FUNCTION foo() RETURNS TABLE (id INT) AS $$ BEGIN END $$";
-        assert_eq!(detect_sql_dialect(content), Some(SqlDialect::Postgres));
+        assert_eq!(
+            selection::detect_sql_dialect(content),
+            Some(SqlDialect::Postgres)
+        );
     }
 
     #[test]
     fn test_detect_sql_dialect_postgres_plpgsql() {
         let content = "CREATE FUNCTION foo() language plpgsql AS $$ BEGIN END $$";
-        assert_eq!(detect_sql_dialect(content), Some(SqlDialect::Postgres));
+        assert_eq!(
+            selection::detect_sql_dialect(content),
+            Some(SqlDialect::Postgres)
+        );
     }
 
     #[test]
     fn test_detect_sql_dialect_generic() {
         let content = "SELECT * FROM users;";
-        assert_eq!(detect_sql_dialect(content), None);
+        assert_eq!(selection::detect_sql_dialect(content), None);
     }
 
     #[test]
@@ -277,6 +279,7 @@ mod tests {
     fn test_code_aware_evaluator_with_dialect() {
         let settings = CodeAwareSettings {
             sql_dialect: Some(SqlDialect::Postgres),
+            ..Default::default()
         };
         let evaluator = CodeAwareEvaluator::new(settings);
         assert_eq!(evaluator.settings.sql_dialect, Some(SqlDialect::Postgres));
@@ -316,6 +319,22 @@ mod tests {
     }
 
     #[test]
+    fn test_select_language_profile_via_shebang() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("script");
+        fs::write(&file_path, "#!/usr/bin/env python3\nprint('hi')\n").unwrap();
+
+        let evaluator = CodeAwareEvaluator::new(CodeAwareSettings::default());
+        let mut context = FileContext::new(file_path, dir.path().to_path_buf());
+
+        let result = evaluator.select_language_profile("", &mut context).unwrap();
+        assert!(result.is_some());
+        let (key, profile) = result.unwrap();
+        assert_eq!(key, "py");
+        assert_eq!(profile.name, "Python");
+    }
+
+    #[test]
     fn test_select_language_profile_sql_with_dialect() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.sql");
@@ -323,6 +342,7 @@ mod tests {
 
         let settings = CodeAwareSettings {
             sql_dialect: Some(SqlDialect::Postgres),
+            ..Default::default()
         };
         let evaluator = CodeAwareEvaluator::new(settings);
         let mut context = FileContext::new(file_path, dir.path().to_path_buf());

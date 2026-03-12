@@ -110,6 +110,7 @@ impl From<&str> for PredicateKey {
             "path_exact" => Self::PathExact,
             "contains" => Self::Contains,
             "c" => Self::Contains,
+            "content" => Self::Contains,
             "matches" => Self::Matches,
             "m" => Self::Matches,
             "size" => Self::Size,
@@ -158,6 +159,31 @@ pub enum LogicalOperator {
     Or,
 }
 
+impl AstNode {
+    pub fn to_canonical_string(&self) -> String {
+        match self {
+            AstNode::Predicate(key, value) => {
+                format!("{}:{}", key.as_ref(), quote_if_needed(value))
+            }
+            AstNode::LogicalOp(op, left, right) => {
+                let symbol = match op {
+                    LogicalOperator::And => "&",
+                    LogicalOperator::Or => "|",
+                };
+                format!(
+                    "{} {symbol} {}",
+                    wrap_if_needed(left, op),
+                    wrap_if_needed(right, op)
+                )
+            }
+            AstNode::Not(inner) => match &**inner {
+                AstNode::Predicate(_, _) => format!("!{}", inner.to_canonical_string()),
+                _ => format!("!({})", inner.to_canonical_string()),
+            },
+        }
+    }
+}
+
 pub fn parse_query(query: &str) -> Result<AstNode> {
     if query.trim().is_empty() {
         return Err(anyhow!("Query cannot be empty."));
@@ -173,9 +199,23 @@ pub fn parse_query(query: &str) -> Result<AstNode> {
     }
 }
 
+pub fn normalize_query(query: &str) -> Result<String> {
+    Ok(parse_query(query)?.to_canonical_string())
+}
+
 // This function is the heart of the parser, using the Pratt method. It consumes
 // the token stream for a single expression level.
 fn build_ast_from_expression_pairs(pairs: Pairs<Rule>) -> Result<AstNode> {
+    if pairs
+        .clone()
+        .next()
+        .is_some_and(|p| matches!(p.as_rule(), Rule::AND | Rule::OR))
+    {
+        return Err(anyhow!(
+            "Invalid query syntax: query cannot start with an operator."
+        ));
+    }
+
     if pairs
         .clone()
         .last()
@@ -197,17 +237,20 @@ fn build_ast_from_expression_pairs(pairs: Pairs<Rule>) -> Result<AstNode> {
         last_was_term = current_is_term;
     }
 
-    PRATT_PARSER
-        .map_primary(|primary| build_ast_from_term(primary))
-        .map_infix(|lhs, op, rhs| {
-            let op = match op.as_rule() {
-                Rule::AND => LogicalOperator::And,
-                Rule::OR => LogicalOperator::Or,
-                _ => unreachable!(),
-            };
-            Ok(AstNode::LogicalOp(op, Box::new(lhs?), Box::new(rhs?)))
-        })
-        .parse(pairs)
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        PRATT_PARSER
+            .map_primary(|primary| build_ast_from_term(primary))
+            .map_infix(|lhs, op, rhs| {
+                let op = match op.as_rule() {
+                    Rule::AND => LogicalOperator::And,
+                    Rule::OR => LogicalOperator::Or,
+                    _ => unreachable!(),
+                };
+                Ok(AstNode::LogicalOp(op, Box::new(lhs?), Box::new(rhs?)))
+            })
+            .parse(pairs)
+    }))
+    .map_err(|_| anyhow!("Invalid query syntax: expression could not be parsed."))?
 }
 
 // This function handles the "primary" parts of the grammar: predicates,
@@ -270,6 +313,29 @@ fn unescape_value(value: &str) -> String {
         return unescaped;
     }
     value.to_string()
+}
+
+fn quote_if_needed(value: &str) -> String {
+    if value.is_empty()
+        || value.contains(char::is_whitespace)
+        || value.contains('&')
+        || value.contains('|')
+        || value.contains('(')
+        || value.contains(')')
+    {
+        format!("\"{}\"", value.replace('"', "\\\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn wrap_if_needed(node: &AstNode, parent: &LogicalOperator) -> String {
+    match (parent, node) {
+        (LogicalOperator::And, AstNode::LogicalOp(LogicalOperator::Or, _, _)) => {
+            format!("({})", node.to_canonical_string())
+        }
+        _ => node.to_canonical_string(),
+    }
 }
 
 #[cfg(test)]

@@ -1,8 +1,10 @@
 // In rdump/tests/cli.rs
 
 use predicates::prelude::*; // Used for writing assertions
+use serde_json::Value as JsonValue;
 use std::fs;
 use std::io::Write;
+use std::path::Path;
 // Lets us run other programs
 use tempfile::tempdir; // Create temporary directories for testing
 
@@ -107,7 +109,7 @@ fn test_search_invalid_query_fails() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("search").arg("ext:"); // Query with a missing value
 
     cmd.assert()
-        .failure()
+        .code(2)
         .stdout(predicate::str::is_empty())
         .stderr(predicate::str::contains("expected value"));
     Ok(())
@@ -166,6 +168,13 @@ fn setup_advanced_test_dir() -> (tempfile::TempDir, std::path::PathBuf) {
     writeln!(gitignore, "*.log").unwrap();
 
     (dir, root)
+}
+
+fn search_stdout(root: &Path, args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    let output = cmd.current_dir(root).args(args).output()?;
+    assert!(output.status.success(), "search command should succeed");
+    Ok(String::from_utf8(output.stdout)?)
 }
 
 // Add these new tests to the end of rdump/tests/cli.rs
@@ -241,7 +250,8 @@ fn test_output_formatting_flags() -> Result<(), Box<dyn std::error::Error>> {
     cmd_json
         .assert()
         .success()
-        .stdout(predicate::str::contains(r#""path": "./main.rs""#))
+        .stdout(predicate::str::contains(r#""schema_version": "rdump.v1""#))
+        .stdout(predicate::str::contains(r#""output": "full""#))
         .stdout(predicate::str::contains(r#""content": "fn main() {}""#));
 
     // Test --format cat with --line-numbers (no color, since it's a pipe)
@@ -282,6 +292,81 @@ fn test_output_formatting_flags() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains("main.rs")) // The path
         .stdout(predicate::str::contains("12")); // The size (fn main() {} is 12 bytes)
 
+    // Test --format summary
+    let mut cmd_summary = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    cmd_summary.current_dir(&root);
+    cmd_summary
+        .arg("search")
+        .arg("--format")
+        .arg("summary")
+        .arg("path:main.rs");
+    cmd_summary
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("main.rs"))
+        .stdout(predicate::str::contains("whole_file_match=true"));
+
+    // Test --format matches
+    let mut cmd_matches = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    cmd_matches.current_dir(&root);
+    cmd_matches
+        .arg("search")
+        .arg("--format")
+        .arg("matches")
+        .arg("contains:main");
+    cmd_matches
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("File: ./main.rs"))
+        .stdout(predicate::str::contains("main"));
+
+    // Test --format snippets
+    let mut cmd_snippets = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    cmd_snippets.current_dir(&root);
+    cmd_snippets
+        .arg("search")
+        .arg("--format")
+        .arg("snippets")
+        .arg("--line-numbers")
+        .arg("contains:main");
+    cmd_snippets
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("@@ 1-1 @@"))
+        .stdout(predicate::str::contains("1 | fn main() {}"));
+
+    Ok(())
+}
+
+#[test]
+fn test_find_json_exposes_path_metadata() -> Result<(), Box<dyn std::error::Error>> {
+    let (_dir, root) = setup_advanced_test_dir();
+
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    let output = cmd
+        .current_dir(&root)
+        .args(["search", "--find", "--format", "json", "ext:rs"])
+        .output()?;
+    assert!(output.status.success());
+    let json: JsonValue = serde_json::from_slice(&output.stdout)?;
+    let results = json
+        .get("results")
+        .and_then(|value| value.as_array())
+        .expect("json search should contain results");
+    let first = results.first().expect("expected at least one find result");
+    assert_eq!(
+        first.get("kind").and_then(|value| value.as_str()),
+        Some("path")
+    );
+    assert!(first.get("metadata").is_some());
+    assert!(first
+        .get("metadata")
+        .and_then(|value| value.get("size_bytes"))
+        .is_some());
+    assert!(first
+        .get("metadata")
+        .and_then(|value| value.get("permissions_display"))
+        .is_some());
     Ok(())
 }
 
@@ -349,7 +434,7 @@ fn test_preset_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     cmd_list2
         .assert()
         .success()
-        .stdout(predicate::str::contains("rust-files : ext:rs"));
+        .stdout(predicate::str::contains("rust-files : (ext:rs)"));
 
     // 4. Remove the preset.
     let mut cmd_remove = assert_cmd::cargo::cargo_bin_cmd!("rdump");
@@ -569,8 +654,9 @@ fn test_search_implicit_and_with_negation_fails() -> Result<(), Box<dyn std::err
     cmd.arg("search").arg("in:. !name:*.txt");
 
     cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("missing logical operator"));
+        .code(2)
+        .stderr(predicate::str::contains("missing logical operator"))
+        .stderr(predicate::str::contains("&"));
     Ok(())
 }
 
@@ -620,6 +706,63 @@ fn test_search_color_never_flag() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("\x1b[").not());
+    Ok(())
+}
+
+#[test]
+fn test_color_policy_across_cat_and_snippets_formats() -> Result<(), Box<dyn std::error::Error>> {
+    let (_dir, root) = setup_test_dir();
+
+    for format in ["cat", "snippets"] {
+        let auto = search_stdout(
+            &root,
+            &[
+                "search",
+                "--format",
+                format,
+                "--color",
+                "auto",
+                "contains:main",
+            ],
+        )?;
+        assert!(
+            !auto.contains("\x1b["),
+            "auto color should stay disabled for captured {format} output"
+        );
+
+        let always = search_stdout(
+            &root,
+            &[
+                "search",
+                "--format",
+                format,
+                "--color",
+                "always",
+                "contains:main",
+            ],
+        )?;
+        assert!(
+            always.contains("\x1b["),
+            "always color should force ANSI escapes for {format}"
+        );
+
+        let never = search_stdout(
+            &root,
+            &[
+                "search",
+                "--format",
+                format,
+                "--color",
+                "never",
+                "contains:main",
+            ],
+        )?;
+        assert!(
+            !never.contains("\x1b["),
+            "never color should suppress ANSI escapes for {format}"
+        );
+    }
+
     Ok(())
 }
 

@@ -49,14 +49,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for case in cases {
         let mut args = HashMap::new();
         args.insert("query".to_string(), json!(case.query));
-        args.insert("root".to_string(), json!(root.to_string_lossy().to_string()));
+        args.insert(
+            "root".to_string(),
+            json!(root.to_string_lossy().to_string()),
+        );
         args.insert("output".to_string(), json!(case.output));
         args.insert("limits".to_string(), case.limits.clone());
         if let Some(lines) = case.context_lines {
             args.insert("context_lines".to_string(), json!(lines));
         }
 
-        let result = client.call_tool("search", Some(args)).await?;
+        let result = client.call_tool("search", Some(args), None).await?;
         let structured = result
             .structured_content
             .ok_or("missing structured content")?;
@@ -133,9 +136,7 @@ fn pretty_json(value: &JsonValue) -> String {
 
 fn sanitize_full_content(value: &JsonValue, preview_len: usize) -> JsonValue {
     let mut cloned = value.clone();
-    let results = cloned
-        .get_mut("results")
-        .and_then(|v| v.as_array_mut());
+    let results = cloned.get_mut("results").and_then(|v| v.as_array_mut());
 
     if let Some(items) = results {
         for item in items.iter_mut() {
@@ -150,7 +151,10 @@ fn sanitize_full_content(value: &JsonValue, preview_len: usize) -> JsonValue {
                 if let Some(obj) = obj {
                     obj.insert("content_length".to_string(), json!(length));
                     obj.insert("content_preview".to_string(), json!(preview));
-                    obj.insert("content_preview_truncated".to_string(), json!(length > preview_len));
+                    obj.insert(
+                        "content_preview_truncated".to_string(),
+                        json!(length > preview_len),
+                    );
                     obj.remove("content");
                 }
             }

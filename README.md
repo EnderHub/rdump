@@ -17,6 +17,23 @@ It's a developer's swiss-army knife for code discovery. It goes beyond the text-
 
 ---
 
+## Current CLI Quick Reference
+
+```sh
+rdump search "ext:rs & func:main" --format summary --skip-errors
+rdump query explain "ext:rs & func:main"
+rdump query effective --preset rust
+rdump config path
+rdump config show
+```
+
+- Use `--skip-errors` or `--fail-fast` to choose partial-failure behavior explicitly.
+- Use `--execution-budget-ms` and `--semantic-budget-ms` to make time limits part of the supported contract.
+- Use `--time-format iso` or `--time-format utc` with `--format find` for deterministic scripting output.
+- Use `--color never` as the no-highlight profile for scripting or plain-text logs.
+
+---
+
 ## Table of Contents
 
 1.  [**Why `rdump`?**](#1-why-rdump-a-comparative-look)
@@ -182,7 +199,7 @@ cargo install rdump
 ```
 
 ### From Pre-compiled Binaries
-Pre-compiled binaries for Linux, macOS, and Windows are available on the [**GitHub Releases**](https://github.com/user/repo/releases) page. Download the appropriate archive, extract the `rdump` executable, and place it in a directory on your system's `PATH`.
+Pre-compiled binaries for Linux, macOS, and Windows are available on the [**GitHub Releases**](https://github.com/almaclaine/rdump/releases) page. Download the appropriate archive, extract the `rdump` executable, and place it in a directory on your system's `PATH`.
 
 ### From Source
 To build `rdump` from source, you'll need `git` and the Rust toolchain.```sh

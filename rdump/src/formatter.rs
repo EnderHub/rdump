@@ -1,445 +1,47 @@
-use anyhow::{Context, Result};
-use chrono::{DateTime, Local}; // For formatting timestamps
-use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::Write;
-use std::ops::Range as StdRange;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt; // For Unix permissions
-use std::path::{Path, PathBuf};
-use syntect::easy::HighlightLines;
-use syntect::highlighting::{Style, ThemeSet};
-use syntect::parsing::SyntaxSet;
-use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
-use tree_sitter::Range;
+#[path = "formatter/raw.rs"]
+mod raw;
+#[path = "formatter/report.rs"]
+mod report;
+#[path = "formatter/shared.rs"]
+mod shared;
 
-// We need to pass the format enum from main.rs
-use crate::limits::{is_probably_binary, maybe_contains_secret, MAX_FILE_SIZE};
-use crate::Format;
+pub use raw::print_output;
+pub use report::{print_path_output, print_report_output};
+pub(crate) use shared::format_mode;
 
-// Lazily load syntax and theme sets once.
-static SYNTAX_SET: Lazy<SyntaxSet> = Lazy::new(SyntaxSet::load_defaults_newlines);
-static THEME_SET: Lazy<ThemeSet> = Lazy::new(ThemeSet::load_defaults);
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct FileOutput {
-    path: String,
-    content: String,
-}
-
-fn read_file_content(path: &Path) -> Result<Option<String>> {
-    let metadata = fs::metadata(path)
-        .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
-
-    if metadata.len() > MAX_FILE_SIZE {
-        eprintln!(
-            "Skipping {} (exceeds max file size of {} bytes)",
-            path.display(),
-            MAX_FILE_SIZE
-        );
-        return Ok(None);
-    }
-
-    let bytes =
-        fs::read(path).with_context(|| format!("Failed to read file {}", path.display()))?;
-
-    if is_probably_binary(&bytes) {
-        eprintln!("Skipping binary file {}", path.display());
-        return Ok(None);
-    }
-
-    let content = String::from_utf8_lossy(&bytes).into_owned();
-
-    if maybe_contains_secret(&content) {
-        eprintln!(
-            "Skipping possible secret-containing file {}",
-            path.display()
-        );
-        return Ok(None);
-    }
-
-    Ok(Some(content))
-}
-
-fn print_markdown_format(
-    writer: &mut impl Write,
-    matching_files: &[(PathBuf, Vec<Range>)],
-    with_line_numbers: bool,
-    with_headers: bool,
-) -> Result<()> {
-    for (i, (path, _)) in matching_files.iter().enumerate() {
-        if with_headers {
-            if i > 0 {
-                writeln!(
-                    writer,
-                    "
----
-"
-                )?;
-            }
-            writeln!(writer, "File: {}", path.display())?;
-            writeln!(writer, "---")?;
-        }
-        let Some(content) = read_file_content(path)? else {
-            continue;
-        };
-        let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-
-        // Markdown format should always use fenced content, not ANSI colors.
-        print_markdown_fenced_content(writer, &content, extension, with_line_numbers, 0)?;
-    }
-    Ok(())
-}
-
-fn print_cat_format(
-    writer: &mut impl Write,
-    matching_files: &[(PathBuf, Vec<Range>)],
-    with_line_numbers: bool,
-    use_color: bool,
-) -> Result<()> {
-    for (path, _) in matching_files {
-        let Some(content) = read_file_content(path)? else {
-            continue;
-        };
-        if use_color {
-            // To terminal
-            print_highlighted_content(
-                writer,
-                &content,
-                path.extension().and_then(|s| s.to_str()).unwrap_or(""),
-                with_line_numbers,
-                0,
-            )?;
-        } else {
-            print_plain_content(writer, &content, with_line_numbers, 0)?; // To file/pipe
-        }
-    }
-    Ok(())
-}
-
-fn print_json_format(
-    writer: &mut impl Write,
-    matching_files: &[(PathBuf, Vec<Range>)],
-) -> Result<()> {
-    let mut outputs = Vec::new();
-    for (path, _) in matching_files {
-        let Some(content) = read_file_content(path)
-            .with_context(|| format!("Failed to read file for final output: {}", path.display()))?
-        else {
-            continue;
-        };
-        outputs.push(FileOutput {
-            path: path.to_string_lossy().to_string(),
-            content,
-        });
-    }
-    // Use to_writer_pretty for readable JSON output
-    serde_json::to_writer_pretty(writer, &outputs)?;
-    Ok(())
-}
-
-fn print_paths_format(
-    writer: &mut impl Write,
-    matching_files: &[(PathBuf, Vec<Range>)],
-) -> Result<()> {
-    for (path, _) in matching_files {
-        writeln!(writer, "{}", path.display())?;
-    }
-    Ok(())
-}
-
-fn print_find_format(
-    writer: &mut impl Write,
-    matching_files: &[(PathBuf, Vec<Range>)],
-) -> Result<()> {
-    for (path, _) in matching_files {
-        let metadata = fs::metadata(path)
-            .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
-        let size = metadata.len();
-        let modified: DateTime<Local> = DateTime::from(metadata.modified()?);
-
-        // Get permissions (basic implementation)
-        let perms = metadata.permissions();
-        #[cfg(unix)]
-        let mode = perms.mode();
-        #[cfg(not(unix))]
-        let mode = 0; // Placeholder for non-unix
-        let perms_str = format_mode(mode);
-
-        // Format size into human-readable string
-        let size_str = format_size(size);
-
-        // Format time
-        let time_str = modified.format("%b %d %H:%M").to_string();
-
-        writeln!(
-            writer,
-            "{:<12} {:>8} {} {}",
-            perms_str,
-            size_str,
-            time_str,
-            path.display()
-        )?;
-    }
-    Ok(())
-}
-
-fn print_hunks_format(
-    writer: &mut impl Write,
-    matching_files: &[(PathBuf, Vec<Range>)],
-    with_line_numbers: bool,
-    with_headers: bool,
-    use_color: bool,
-    context_lines: usize,
-) -> Result<()> {
-    for (i, (path, hunks)) in matching_files.iter().enumerate() {
-        if with_headers {
-            if i > 0 {
-                writeln!(writer, "\n---\n")?;
-            }
-            writeln!(writer, "File: {}", path.display())?;
-            writeln!(writer, "---")?;
-        }
-        let Some(content) = read_file_content(path)? else {
-            continue;
-        };
-        let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-
-        if hunks.is_empty() {
-            // Boolean match, print the whole file
-            print_content_with_style(writer, &content, extension, with_line_numbers, use_color, 0)?;
-        } else {
-            // Hunk match, print with context
-            let lines: Vec<&str> = LinesWithEndings::from(&content).collect();
-            let line_ranges = get_contextual_line_ranges(hunks, &lines, context_lines);
-
-            for (i, range) in line_ranges.iter().enumerate() {
-                if i > 0 {
-                    writeln!(writer, "...")?;
-                }
-                let hunk_content = lines[range.clone()].join("");
-                print_content_with_style(
-                    writer,
-                    &hunk_content,
-                    extension,
-                    with_line_numbers,
-                    use_color,
-                    range.start,
-                )?;
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Formats and prints the final output to a generic writer based on the chosen format.
-pub fn print_output(
-    writer: &mut impl Write,
-    matching_files: &[(PathBuf, Vec<Range>)],
-    format: &Format,
-    with_line_numbers: bool,
-    no_headers: bool,
-    use_color: bool,
-    context_lines: usize,
-) -> Result<()> {
-    match format {
-        Format::Find => print_find_format(writer, matching_files)?,
-        Format::Paths => print_paths_format(writer, matching_files)?,
-        Format::Json => print_json_format(writer, matching_files)?,
-        Format::Cat => print_cat_format(writer, matching_files, with_line_numbers, use_color)?,
-        Format::Markdown => {
-            print_markdown_format(writer, matching_files, with_line_numbers, !no_headers)?
-        }
-        Format::Hunks => print_hunks_format(
-            writer,
-            matching_files,
-            with_line_numbers,
-            !no_headers,
-            use_color,
-            context_lines,
-        )?,
-    }
-    Ok(())
-}
-
-/// Helper to choose the correct printing function based on color/style preference.
-fn print_content_with_style(
-    writer: &mut impl Write,
-    content: &str,
-    extension: &str,
-    with_line_numbers: bool,
-    use_color: bool,
-    start_line_number: usize,
-) -> Result<()> {
-    if use_color {
-        print_highlighted_content(
-            writer,
-            content,
-            extension,
-            with_line_numbers,
-            start_line_number,
-        )
-    } else {
-        print_plain_content(writer, content, with_line_numbers, start_line_number)
-    }
-}
-
-/// Given a set of byte-offset ranges, calculate the line number ranges including context,
-/// and merge any overlapping ranges.
-fn get_contextual_line_ranges(
-    hunks: &[Range],
-    lines: &[&str],
-    context_lines: usize,
-) -> Vec<StdRange<usize>> {
-    if hunks.is_empty() || lines.is_empty() {
-        return vec![];
-    }
-
-    let mut line_ranges = Vec::new();
-    for hunk in hunks {
-        let start_line = hunk.start_point.row;
-        let end_line = hunk.end_point.row;
-
-        let context_start = start_line.saturating_sub(context_lines);
-        let context_end = (end_line + context_lines).min(lines.len() - 1);
-
-        if context_end >= context_start {
-            line_ranges.push(context_start..context_end + 1);
-        }
-    }
-    line_ranges.sort_by_key(|r| r.start);
-
-    // Merge overlapping ranges
-    let mut merged_ranges = Vec::new();
-    let mut iter = line_ranges.into_iter();
-    if let Some(mut current) = iter.next() {
-        for next in iter {
-            if next.start <= current.end {
-                current.end = current.end.max(next.end);
-            } else {
-                merged_ranges.push(current);
-                current = next;
-            }
-        }
-        merged_ranges.push(current);
-    }
-    merged_ranges
-}
-
-/// Prints syntax-highlighted content to the writer.
-fn print_highlighted_content(
-    writer: &mut impl Write,
-    content: &str,
-    extension: &str,
-    with_line_numbers: bool,
-    start_line_number: usize,
-) -> Result<()> {
-    let syntax = SYNTAX_SET
-        .find_syntax_by_extension(extension)
-        .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
-
-    let theme = &THEME_SET.themes["base16-ocean.dark"];
-    let mut highlighter = HighlightLines::new(syntax, theme);
-
-    for (i, line) in LinesWithEndings::from(content).enumerate() {
-        if with_line_numbers {
-            write!(writer, "{: >5} | ", start_line_number + i + 1)?;
-        }
-        let ranges: Vec<(Style, &str)> = highlighter.highlight_line(line, &SYNTAX_SET)?;
-        let escaped = as_24_bit_terminal_escaped(&ranges[..], false);
-        write!(writer, "{escaped}")?;
-    }
-    // Reset color at the end
-    write!(writer, "\x1b[0m")?;
-    Ok(())
-}
-
-/// Prints plain content, optionally with line numbers.
-fn print_plain_content(
-    writer: &mut impl Write,
-    content: &str,
-    with_line_numbers: bool,
-    start_line_number: usize,
-) -> Result<()> {
-    for (i, line) in content.lines().enumerate() {
-        if with_line_numbers {
-            writeln!(writer, "{: >5} | {}", start_line_number + i + 1, line)?;
-        } else {
-            writeln!(writer, "{line}")?;
-        }
-    }
-    Ok(())
-}
-
-/// Prints content inside a Markdown code fence.
-fn print_markdown_fenced_content(
-    writer: &mut impl Write,
-    content: &str,
-    extension: &str,
-    with_line_numbers: bool,
-    start_line_number: usize,
-) -> Result<()> {
-    writeln!(writer, "```{extension}")?;
-    // print_plain_content handles line numbers correctly
-    print_plain_content(writer, content, with_line_numbers, start_line_number)?;
-    writeln!(writer, "```")?;
-    Ok(())
-}
-
-fn format_mode(mode: u32) -> String {
-    #[cfg(unix)]
-    {
-        let user_r = if mode & 0o400 != 0 { 'r' } else { '-' };
-        let user_w = if mode & 0o200 != 0 { 'w' } else { '-' };
-        let user_x = if mode & 0o100 != 0 { 'x' } else { '-' };
-        let group_r = if mode & 0o040 != 0 { 'r' } else { '-' };
-        let group_w = if mode & 0o020 != 0 { 'w' } else { '-' };
-        let group_x = if mode & 0o010 != 0 { 'x' } else { '-' };
-        let other_r = if mode & 0o004 != 0 { 'r' } else { '-' };
-        let other_w = if mode & 0o002 != 0 { 'w' } else { '-' };
-        let other_x = if mode & 0o001 != 0 { 'x' } else { '-' };
-        format!("-{user_r}{user_w}{user_x}{group_r}{group_w}{group_x}{other_r}{other_w}{other_x}")
-    }
-    #[cfg(not(unix))]
-    {
-        // Basic fallback for non-Unix platforms
-        if mode & 0o200 != 0 {
-            "-rw-------"
-        } else {
-            "-r--------"
-        }
-        .to_string()
-    }
-}
-
-fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-
-    if bytes >= GB {
-        format!("{:.1}G", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1}M", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1}K", bytes as f64 / KB as f64)
-    } else {
-        format!("{bytes}B")
-    }
-}
+#[cfg(test)]
+pub(crate) use shared::{format_size, get_contextual_line_ranges};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        ContentState, Match, SearchReport, SearchResult, SearchResultMetadata, SearchStats,
+    };
     use std::io::Write;
+    use std::ops::Range;
+    use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
-    // Helper to create a temp file with some content.
     fn create_temp_file_with_content(content: &str) -> NamedTempFile {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(content.as_bytes()).unwrap();
         file
+    }
+
+    fn sample_report(format_path: &str, content: &str, matches: Vec<Match>) -> SearchReport {
+        SearchReport {
+            results: vec![SearchResult {
+                path: PathBuf::from(format_path),
+                matches,
+                content: content.to_string(),
+                content_state: ContentState::Loaded,
+                diagnostics: vec![],
+                metadata: SearchResultMetadata::default(),
+            }],
+            stats: SearchStats::default(),
+            diagnostics: vec![],
+        }
     }
 
     #[test]
@@ -447,9 +49,19 @@ mod tests {
         let file = create_temp_file_with_content("a\nb");
         let paths = vec![(file.path().to_path_buf(), vec![])];
         let mut writer = Vec::new();
-        print_output(&mut writer, &paths, &Format::Cat, true, false, false, 0).unwrap();
+        print_output(
+            &mut writer,
+            &paths,
+            &crate::Format::Cat,
+            true,
+            false,
+            false,
+            0,
+            crate::TimeFormat::Local,
+        )
+        .unwrap();
         let output = String::from_utf8(writer).unwrap();
-        assert_eq!(output, "    1 | a\n    2 | b\n");
+        assert_eq!(output, "    1 | a\n    2 | b");
     }
 
     #[test]
@@ -461,7 +73,17 @@ mod tests {
             (file2.path().to_path_buf(), vec![]),
         ];
         let mut writer = Vec::new();
-        print_output(&mut writer, &paths, &Format::Paths, false, false, false, 0).unwrap();
+        print_output(
+            &mut writer,
+            &paths,
+            &crate::Format::Paths,
+            false,
+            false,
+            false,
+            0,
+            crate::TimeFormat::Local,
+        )
+        .unwrap();
         let output = String::from_utf8(writer).unwrap();
         let expected = format!("{}\n{}\n", file1.path().display(), file2.path().display());
         assert_eq!(output, expected);
@@ -472,40 +94,45 @@ mod tests {
         let file = create_temp_file_with_content("line 1");
         let paths = vec![(file.path().to_path_buf(), vec![])];
         let mut writer = Vec::new();
-
-        // Test with use_color = false to get markdown fences
         print_output(
             &mut writer,
             &paths,
-            &Format::Markdown,
+            &crate::Format::Markdown,
             false,
             false,
             false,
             0,
+            crate::TimeFormat::Local,
         )
         .unwrap();
 
         let output = String::from_utf8(writer).unwrap();
-
         let expected_header = format!("File: {}\n---\n", file.path().display());
         assert!(output.starts_with(&expected_header));
-        // The extension of a tempfile is random, so we check for an empty language hint
         assert!(output.contains("```\nline 1\n```\n"));
     }
 
     #[test]
     fn test_format_markdown_with_ansi_color() {
         let file = create_temp_file_with_content("fn main() {}");
-        // Give it a .rs extension so syntect can find the grammar
         let rs_path = file.path().with_extension("rs");
         std::fs::rename(file.path(), &rs_path).unwrap();
 
         let paths = vec![(rs_path, vec![])];
         let mut writer = Vec::new();
-        print_output(&mut writer, &paths, &Format::Cat, false, false, true, 0).unwrap();
+        print_output(
+            &mut writer,
+            &paths,
+            &crate::Format::Cat,
+            false,
+            false,
+            true,
+            0,
+            crate::TimeFormat::Local,
+        )
+        .unwrap();
         let output = String::from_utf8(writer).unwrap();
 
-        // Check for evidence of ANSI color, not the exact codes which can be brittle.
         assert!(output.contains("\x1b["), "Should contain ANSI escape codes");
         assert!(
             !output.contains("```"),
@@ -518,30 +145,21 @@ mod tests {
         let file = create_temp_file_with_content("fn main() {}");
         let paths = vec![(file.path().to_path_buf(), vec![])];
         let mut writer = Vec::new();
-
-        // Test with use_color = true, which should be ignored for the Markdown format.
         print_output(
             &mut writer,
             &paths,
-            &Format::Markdown,
+            &crate::Format::Markdown,
             false,
             false,
             true,
             0,
+            crate::TimeFormat::Local,
         )
         .unwrap();
 
         let output = String::from_utf8(writer).unwrap();
-
-        // Check that the output is standard markdown and does not contain color codes.
-        assert!(
-            output.contains("```"),
-            "Markdown format should use code fences"
-        );
-        assert!(
-            !output.contains("\x1b["),
-            "Markdown format should not contain ANSI escape codes"
-        );
+        assert!(output.contains("```"));
+        assert!(!output.contains("\x1b["));
     }
 
     #[test]
@@ -549,33 +167,35 @@ mod tests {
         let file = create_temp_file_with_content("hello");
         let paths = vec![(file.path().to_path_buf(), vec![])];
         let mut writer = Vec::new();
-        print_output(&mut writer, &paths, &Format::Find, false, false, false, 0).unwrap();
+        print_output(
+            &mut writer,
+            &paths,
+            &crate::Format::Find,
+            false,
+            false,
+            false,
+            0,
+            crate::TimeFormat::Local,
+        )
+        .unwrap();
         let output = String::from_utf8(writer).unwrap();
-        assert!(output.contains("B")); // Size
+        assert!(output.contains("B"));
         assert!(output.contains(&file.path().display().to_string()));
     }
 
     #[test]
     fn test_format_size_all_ranges() {
-        // Test bytes
-        assert_eq!(super::format_size(500), "500B");
-
-        // Test kilobytes (lines 386-388)
-        assert_eq!(super::format_size(1024), "1.0K");
-        assert_eq!(super::format_size(1536), "1.5K");
-
-        // Test megabytes (lines 384-386)
-        assert_eq!(super::format_size(1024 * 1024), "1.0M");
-        assert_eq!(super::format_size(2 * 1024 * 1024), "2.0M");
-
-        // Test gigabytes (lines 382-384)
-        assert_eq!(super::format_size(1024 * 1024 * 1024), "1.0G");
-        assert_eq!(super::format_size(3 * 1024 * 1024 * 1024), "3.0G");
+        assert_eq!(format_size(500), "500B");
+        assert_eq!(format_size(1024), "1.0K");
+        assert_eq!(format_size(1536), "1.5K");
+        assert_eq!(format_size(1024 * 1024), "1.0M");
+        assert_eq!(format_size(2 * 1024 * 1024), "2.0M");
+        assert_eq!(format_size(1024 * 1024 * 1024), "1.0G");
+        assert_eq!(format_size(3 * 1024 * 1024 * 1024), "3.0G");
     }
 
     #[test]
     fn test_format_markdown_multiple_files_with_separators() {
-        // This tests lines 44-51 (the separator between multiple files)
         let file1 = create_temp_file_with_content("content 1");
         let file2 = create_temp_file_with_content("content 2");
         let paths = vec![
@@ -586,16 +206,16 @@ mod tests {
         print_output(
             &mut writer,
             &paths,
-            &Format::Markdown,
+            &crate::Format::Markdown,
             false,
             false,
             false,
             0,
+            crate::TimeFormat::Local,
         )
         .unwrap();
         let output = String::from_utf8(writer).unwrap();
 
-        // Should contain content from both files and File: headers
         assert!(output.contains("content 1"));
         assert!(output.contains("content 2"));
         assert!(output.contains("File:"));
@@ -603,7 +223,6 @@ mod tests {
 
     #[test]
     fn test_format_cat_with_ansi_and_line_numbers() {
-        // This tests line 309 (ANSI output with line numbers)
         let file = create_temp_file_with_content("fn main() {}\nlet x = 1;");
         let rs_path = file.path().with_extension("rs");
         std::fs::rename(file.path(), &rs_path).unwrap();
@@ -613,35 +232,30 @@ mod tests {
         print_output(
             &mut writer,
             &paths,
-            &Format::Cat,
-            true, // with_line_numbers
+            &crate::Format::Cat,
+            true,
             false,
-            true, // use_color (ANSI)
+            true,
             0,
+            crate::TimeFormat::Local,
         )
         .unwrap();
         let output = String::from_utf8(writer).unwrap();
 
-        // Should contain line numbers and ANSI codes
-        assert!(
-            output.contains(" | "),
-            "Should contain line number separator"
-        );
-        assert!(output.contains("\x1b["), "Should contain ANSI escape codes");
+        assert!(output.contains(" | "));
+        assert!(output.contains("\x1b["));
     }
 
     #[test]
     fn test_get_contextual_line_ranges_empty_hunks() {
-        // This tests line 258 (empty hunks case)
         let lines: Vec<&str> = vec!["line 1", "line 2", "line 3"];
         let hunks: Vec<tree_sitter::Range> = vec![];
-        let result = super::get_contextual_line_ranges(&hunks, &lines, 1);
+        let result = get_contextual_line_ranges(&hunks, &lines, 1);
         assert!(result.is_empty());
     }
 
     #[test]
     fn test_get_contextual_line_ranges_empty_lines() {
-        // This tests line 257-258 (empty lines case)
         let lines: Vec<&str> = vec![];
         let hunks = vec![tree_sitter::Range {
             start_byte: 0,
@@ -649,7 +263,92 @@ mod tests {
             start_point: tree_sitter::Point { row: 0, column: 0 },
             end_point: tree_sitter::Point { row: 0, column: 10 },
         }];
-        let result = super::get_contextual_line_ranges(&hunks, &lines, 1);
+        let result = get_contextual_line_ranges(&hunks, &lines, 1);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_summary_report_output() {
+        let report = sample_report("src/main.rs", "fn main() {}", vec![]);
+        let mut writer = Vec::new();
+        print_report_output(
+            &mut writer,
+            &report,
+            &crate::Format::Summary,
+            false,
+            false,
+            false,
+            0,
+            true,
+            crate::TimeFormat::Local,
+        )
+        .unwrap();
+        let output = String::from_utf8(writer).unwrap();
+        assert!(output.contains("src/main.rs"));
+        assert!(output.contains("whole_file_match=true"));
+    }
+
+    #[test]
+    fn test_matches_report_output() {
+        let report = sample_report(
+            "src/main.rs",
+            "fn main() {}",
+            vec![Match {
+                start_line: 1,
+                end_line: 1,
+                start_column: 3,
+                end_column: 7,
+                byte_range: Range { start: 3, end: 7 },
+                text: "main".to_string(),
+            }],
+        );
+        let mut writer = Vec::new();
+        print_report_output(
+            &mut writer,
+            &report,
+            &crate::Format::Matches,
+            false,
+            false,
+            false,
+            0,
+            true,
+            crate::TimeFormat::Local,
+        )
+        .unwrap();
+        let output = String::from_utf8(writer).unwrap();
+        assert!(output.contains("File: src/main.rs"));
+        assert!(output.contains("1:4-1:8 main"));
+    }
+
+    #[test]
+    fn test_snippets_report_output() {
+        let report = sample_report(
+            "src/main.rs",
+            "fn main() {}\nlet value = main();",
+            vec![Match {
+                start_line: 2,
+                end_line: 2,
+                start_column: 12,
+                end_column: 16,
+                byte_range: Range { start: 25, end: 29 },
+                text: "main".to_string(),
+            }],
+        );
+        let mut writer = Vec::new();
+        print_report_output(
+            &mut writer,
+            &report,
+            &crate::Format::Snippets,
+            true,
+            false,
+            false,
+            0,
+            true,
+            crate::TimeFormat::Local,
+        )
+        .unwrap();
+        let output = String::from_utf8(writer).unwrap();
+        assert!(output.contains("@@ 2-2 @@"));
+        assert!(output.contains("2 | let value = main();"));
     }
 }

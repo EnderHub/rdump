@@ -100,6 +100,7 @@ fn example_custom_options() -> Result<()> {
         hidden: true,                            // include hidden files
         max_depth: Some(4),                      // limit traversal depth
         sql_dialect: Some(SqlDialect::Postgres), // demonstrate dialect override
+        ..Default::default()
     };
 
     let results = run_query("ext:rs | ext:sql", options)?;

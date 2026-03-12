@@ -1,0 +1,91 @@
+{
+  "continuation_token": null,
+  "coordinate_semantics": {
+    "byte_ranges": "0-indexed byte offsets within the file",
+    "columns": "0-indexed byte offsets within the line",
+    "line_numbers": "1-indexed lines"
+  },
+  "diagnostics": [],
+  "effective_query": "path:src/main.rs",
+  "error_mode": "skip_errors",
+  "errors": [],
+  "next_offset": null,
+  "output": "paths",
+  "page_size": 50,
+  "query": "path:src/main.rs",
+  "results": [
+    {
+      "file": {
+        "display_path": "<FIXTURE_ROOT>/src/main.rs",
+        "resolution": "canonical",
+        "resolved_path": "<FIXTURE_ROOT>/src/main.rs",
+        "root_relative_path": "src/main.rs"
+      },
+      "fingerprint": "<FINGERPRINT>",
+      "item_truncated": false,
+      "kind": "path",
+      "metadata": {
+        "modified_unix_millis": 0,
+        "permissions_display": "-rw-r--r--",
+        "readonly": false,
+        "size_bytes": 336
+      },
+      "path": "<FIXTURE_ROOT>/src/main.rs",
+      "result_kind": "whole_file"
+    }
+  ],
+  "root": "<FIXTURE_ROOT>",
+  "schema_reference": "rdump://docs/sdk",
+  "schema_version": "rdump.v1",
+  "stats": {
+    "candidate_files": 13,
+    "diagnostics": 0,
+    "directory_hotspots": [
+      {
+        "candidate_files": 11,
+        "path": "src"
+      },
+      {
+        "candidate_files": 1,
+        "path": "README.md"
+      },
+      {
+        "candidate_files": 1,
+        "path": "helper.py"
+      }
+    ],
+    "errors": 0,
+    "evaluate_millis": 0,
+    "evaluated_files": 1,
+    "hidden_skipped": 0,
+    "ignore_skipped": 0,
+    "matched_files": 1,
+    "matched_ranges": 0,
+    "materialize_millis": 0,
+    "max_depth_skipped": 0,
+    "prefilter_millis": 0,
+    "prefiltered_files": 1,
+    "query_cache_hits": 0,
+    "query_cache_misses": 0,
+    "ranged_results": 0,
+    "returned_bytes": 0,
+    "returned_files": 1,
+    "returned_matches": 0,
+    "root_boundary_excluded": 0,
+    "semantic_budget_exhaustions": 0,
+    "semantic_parse_failures": 0,
+    "semantic_parse_failures_by_language": {},
+    "semaphore_wait_millis": 0,
+    "suppressed_binary": 0,
+    "suppressed_secret_like": 0,
+    "suppressed_too_large": 0,
+    "tree_cache_hits": 0,
+    "tree_cache_misses": 0,
+    "unreadable_entries": 0,
+    "walk_millis": 0,
+    "whole_file_results": 1
+  },
+  "status": "full_success",
+  "truncated": false,
+  "truncation_reason": null
+}

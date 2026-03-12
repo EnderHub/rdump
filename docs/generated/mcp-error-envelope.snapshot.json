@@ -1,0 +1,14 @@
+{
+  "schema_version": "rdump.v1",
+  "status": "invalid_query",
+  "error": {
+    "code": "query_validation",
+    "message": "Invalid query syntax: expected value",
+    "field": "query",
+    "remediation": {
+      "retryable": false,
+      "suggested_action": "Use `rdump query explain` to inspect the normalized query.",
+      "docs_uri": "rdump://docs/runtime"
+    }
+  }
+}

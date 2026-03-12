@@ -53,163 +53,62 @@
 mod async_api;
 pub mod commands;
 pub mod config;
+pub mod content;
 pub mod evaluator;
+mod execution;
 pub mod formatter;
-pub mod limits {
-    use std::path::PathBuf;
-    use std::time::Duration;
-
-    /// Maximum file size we will read in bytes (default: 10MB).
-    pub const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
-
-    /// Maximum directory depth we will traverse by default.
-    pub const DEFAULT_MAX_DEPTH: usize = 100;
-
-    /// Maximum time we will spend evaluating a single regex against a file's lines.
-    pub const MAX_REGEX_EVAL_DURATION: Duration = Duration::from_millis(200);
-
-    /// Returns true if the byte slice is likely a binary file.
-    pub fn is_probably_binary(bytes: &[u8]) -> bool {
-        bytes.contains(&0)
-    }
-
-    /// Light heuristic to skip obvious secrets before printing them.
-    pub fn maybe_contains_secret(content: &str) -> bool {
-        let lower = content.to_lowercase();
-        lower.contains("-----begin private key-----")
-            || lower.contains("aws_secret_access_key")
-            || lower.contains("aws_access_key_id")
-            || lower.contains("secret_key=")
-            || lower.contains("secret-key=")
-            || lower.contains("authorization: bearer")
-            || lower.contains("eyj") // common JWT prefix (base64url '{"typ":"JWT"...}')
-            || lower.contains("private_key")
-    }
-
-    /// Canonicalize `path` and ensure it stays under `root`. Returns the canonicalized path.
-    pub fn safe_canonicalize(path: &PathBuf, root: &PathBuf) -> anyhow::Result<PathBuf> {
-        let canonical_root = dunce::canonicalize(root)?;
-        let canonical = dunce::canonicalize(path)?;
-        if !canonical.starts_with(&canonical_root) {
-            anyhow::bail!(
-                "Path {} escapes root {}",
-                canonical.display(),
-                canonical_root.display()
-            );
-        }
-        Ok(canonical)
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-        use std::fs;
-        use tempfile::tempdir;
-
-        #[test]
-        fn test_is_probably_binary() {
-            assert!(is_probably_binary(&[0, 1, 2, 3]));
-            assert!(is_probably_binary(b"hello\x00world"));
-            assert!(!is_probably_binary(b"hello world"));
-            assert!(!is_probably_binary(b"fn main() {}"));
-        }
-
-        #[test]
-        fn test_maybe_contains_secret_private_key() {
-            assert!(maybe_contains_secret("-----BEGIN PRIVATE KEY-----"));
-            assert!(maybe_contains_secret(
-                "some text with -----begin private key----- in it"
-            ));
-        }
-
-        #[test]
-        fn test_maybe_contains_secret_aws() {
-            assert!(maybe_contains_secret("aws_secret_access_key=abcd1234"));
-            assert!(maybe_contains_secret("AWS_ACCESS_KEY_ID=AKIA..."));
-        }
-
-        #[test]
-        fn test_maybe_contains_secret_other() {
-            assert!(maybe_contains_secret("secret_key=mykey"));
-            assert!(maybe_contains_secret("secret-key=mykey"));
-            assert!(maybe_contains_secret("Authorization: Bearer token"));
-            assert!(maybe_contains_secret("eyJhbGciOiJIUzI1NiJ9")); // JWT
-            assert!(maybe_contains_secret("private_key: xyz"));
-        }
-
-        #[test]
-        fn test_maybe_contains_secret_safe() {
-            assert!(!maybe_contains_secret("fn main() { println!(\"Hello\"); }"));
-            assert!(!maybe_contains_secret("SELECT * FROM users;"));
-        }
-
-        #[test]
-        fn test_safe_canonicalize_within_root() {
-            let dir = tempdir().unwrap();
-            let root = dir.path().to_path_buf();
-            let subdir = root.join("subdir");
-            fs::create_dir(&subdir).unwrap();
-            let file = subdir.join("test.txt");
-            fs::write(&file, "content").unwrap();
-
-            let result = safe_canonicalize(&file, &root);
-            assert!(result.is_ok());
-            assert!(result
-                .unwrap()
-                .starts_with(dunce::canonicalize(&root).unwrap()));
-        }
-
-        #[test]
-        fn test_safe_canonicalize_escapes_root() {
-            let dir = tempdir().unwrap();
-            let root = dir.path().join("project");
-            fs::create_dir(&root).unwrap();
-
-            // Create a file outside the root
-            let outside_file = dir.path().join("outside.txt");
-            fs::write(&outside_file, "content").unwrap();
-
-            let result = safe_canonicalize(&outside_file, &root);
-            assert!(result.is_err());
-            let err_msg = result.unwrap_err().to_string();
-            assert!(err_msg.contains("escapes root"));
-        }
-
-        #[test]
-        fn test_safe_canonicalize_nonexistent_path() {
-            let dir = tempdir().unwrap();
-            let root = dir.path().to_path_buf();
-            let nonexistent = root.join("nonexistent.txt");
-
-            let result = safe_canonicalize(&nonexistent, &root);
-            assert!(result.is_err());
-        }
-    }
-}
+pub mod limits;
 pub mod parser;
+pub mod planner;
 pub mod predicates;
+pub mod request;
+pub mod support_matrix;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
+#[cfg(feature = "cli")]
 use clap::{Parser, Subcommand, ValueEnum};
-use std::fs;
-use std::path::{Path, PathBuf};
+pub use rdump_contracts as contracts;
+use rdump_contracts::{ErrorMode, ExecutionProfile, SemanticMatchMode, SnippetMode};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::path::PathBuf;
 
 // =============================================================================
 // Library API Exports
 // =============================================================================
 
+pub use crate::planner::{
+    explain_query, repo_language_inventory, serialize_query_ast, simplify_query, PredicatePlan,
+    QueryExplanation, QueryPreflight, QueryStage, RepoLanguageCount, StableAstNode,
+};
 /// SQL dialect used for SQL-aware searches; re-exported so callers can configure
 /// dialects without reaching into internal modules.
 pub use crate::predicates::code_aware::SqlDialect;
 #[cfg(feature = "async")]
-pub use async_api::{search_all_async, search_async};
+pub use async_api::{search_all_async, search_async, search_async_with_progress};
+pub use execution::{
+    default_max_concurrent_searches, search_execution_policy, CancelOnDrop,
+    SearchCancellationToken, SearchExecutionPolicy,
+};
+pub use request::{
+    capability_metadata, classify_error as classify_contract_error, contract_error,
+    default_limits as default_contract_limits, execute_search_request,
+    execute_search_request_with_progress, format_search_text as format_contract_search_text,
+    search_options_from_request,
+};
 
 // Bring our command functions into scope
-use crate::limits::{is_probably_binary, MAX_FILE_SIZE};
+pub use crate::content::{ContentSkipReason, ContentState, SearchDiagnostic};
 use crate::predicates::code_aware::SqlDialect as CodeSqlDialect;
+#[cfg(feature = "cli")]
+use commands::{config::run_config, query::run_query};
+#[cfg(feature = "cli")]
 use commands::{lang::run_lang, preset::run_preset, search::run_search};
-use std::io::ErrorKind;
 use std::ops::Range;
+use std::time::UNIX_EPOCH;
 use tree_sitter::Range as TsRange;
 
 // =============================================================================
@@ -247,6 +146,51 @@ pub struct SearchOptions {
 
     /// SQL dialect override for .sql files.
     pub sql_dialect: Option<SqlDialect>,
+
+    /// If true, fail immediately when a dialect-specific SQL parser fails instead of falling back to generic SQL.
+    pub sql_strict: bool,
+
+    /// How per-file materialization failures should be handled by higher-level helpers.
+    pub error_mode: ErrorMode,
+
+    /// End-to-end search time budget in milliseconds.
+    pub execution_budget_ms: Option<u64>,
+
+    /// Per-file semantic evaluation budget in milliseconds.
+    pub semantic_budget_ms: Option<u64>,
+
+    /// Maximum semantic captures to retain for a single file.
+    pub max_semantic_matches_per_file: Option<usize>,
+
+    /// Override language selection for extensionless or ambiguous files.
+    pub language_override: Option<String>,
+
+    /// Matching behavior for semantic identifier-like predicates.
+    pub semantic_match_mode: SemanticMatchMode,
+
+    /// Snippet shaping policy for line endings.
+    pub snippet_mode: SnippetMode,
+
+    /// If true, semantic parse failures are surfaced as hard errors.
+    pub semantic_strict: bool,
+
+    /// If true, path canonicalization fallback becomes a hard error.
+    pub strict_path_resolution: bool,
+
+    /// If true, record file metadata during evaluation and emit drift diagnostics during later materialization.
+    pub snapshot_drift_detection: bool,
+
+    /// Bundled operational defaults for different execution environments.
+    pub execution_profile: Option<ExecutionProfile>,
+
+    /// If true, emit best-effort diagnostics describing why paths were excluded by ignore handling.
+    pub ignore_debug: bool,
+
+    /// If true, emit diagnostics describing semantic language-profile selection.
+    pub language_debug: bool,
+
+    /// If true, emit SQL dialect heuristic traces for `.sql` files.
+    pub sql_trace: bool,
 }
 
 impl Default for SearchOptions {
@@ -258,15 +202,285 @@ impl Default for SearchOptions {
             hidden: false,
             max_depth: None,
             sql_dialect: None,
+            sql_strict: false,
+            error_mode: ErrorMode::SkipErrors,
+            execution_budget_ms: None,
+            semantic_budget_ms: None,
+            max_semantic_matches_per_file: None,
+            language_override: None,
+            semantic_match_mode: SemanticMatchMode::Exact,
+            snippet_mode: SnippetMode::PreserveLineEndings,
+            semantic_strict: false,
+            strict_path_resolution: false,
+            snapshot_drift_detection: true,
+            execution_profile: None,
+            ignore_debug: false,
+            language_debug: false,
+            sql_trace: false,
         }
     }
 }
+
+#[derive(Debug, Clone, Default)]
+pub struct SearchOptionsBuilder {
+    options: SearchOptions,
+}
+
+impl SearchOptions {
+    pub fn builder() -> SearchOptionsBuilder {
+        SearchOptionsBuilder {
+            options: SearchOptions::default(),
+        }
+    }
+}
+
+impl SearchOptionsBuilder {
+    pub fn root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.options.root = root.into();
+        self
+    }
+
+    pub fn presets(mut self, presets: Vec<String>) -> Self {
+        self.options.presets = presets;
+        self
+    }
+
+    pub fn no_ignore(mut self, no_ignore: bool) -> Self {
+        self.options.no_ignore = no_ignore;
+        self
+    }
+
+    pub fn hidden(mut self, hidden: bool) -> Self {
+        self.options.hidden = hidden;
+        self
+    }
+
+    pub fn max_depth(mut self, max_depth: Option<usize>) -> Self {
+        self.options.max_depth = max_depth;
+        self
+    }
+
+    pub fn sql_dialect(mut self, sql_dialect: Option<SqlDialect>) -> Self {
+        self.options.sql_dialect = sql_dialect;
+        self
+    }
+
+    pub fn sql_strict(mut self, sql_strict: bool) -> Self {
+        self.options.sql_strict = sql_strict;
+        self
+    }
+
+    pub fn error_mode(mut self, error_mode: ErrorMode) -> Self {
+        self.options.error_mode = error_mode;
+        self
+    }
+
+    pub fn execution_budget_ms(mut self, execution_budget_ms: Option<u64>) -> Self {
+        self.options.execution_budget_ms = execution_budget_ms;
+        self
+    }
+
+    pub fn semantic_budget_ms(mut self, semantic_budget_ms: Option<u64>) -> Self {
+        self.options.semantic_budget_ms = semantic_budget_ms;
+        self
+    }
+
+    pub fn max_semantic_matches_per_file(
+        mut self,
+        max_semantic_matches_per_file: Option<usize>,
+    ) -> Self {
+        self.options.max_semantic_matches_per_file = max_semantic_matches_per_file;
+        self
+    }
+
+    pub fn language_override(mut self, language_override: Option<String>) -> Self {
+        self.options.language_override = language_override;
+        self
+    }
+
+    pub fn semantic_match_mode(mut self, semantic_match_mode: SemanticMatchMode) -> Self {
+        self.options.semantic_match_mode = semantic_match_mode;
+        self
+    }
+
+    pub fn snippet_mode(mut self, snippet_mode: SnippetMode) -> Self {
+        self.options.snippet_mode = snippet_mode;
+        self
+    }
+
+    pub fn semantic_strict(mut self, semantic_strict: bool) -> Self {
+        self.options.semantic_strict = semantic_strict;
+        self
+    }
+
+    pub fn strict_path_resolution(mut self, strict_path_resolution: bool) -> Self {
+        self.options.strict_path_resolution = strict_path_resolution;
+        self
+    }
+
+    pub fn snapshot_drift_detection(mut self, snapshot_drift_detection: bool) -> Self {
+        self.options.snapshot_drift_detection = snapshot_drift_detection;
+        self
+    }
+
+    pub fn execution_profile(mut self, execution_profile: Option<ExecutionProfile>) -> Self {
+        self.options.execution_profile = execution_profile;
+        self
+    }
+
+    pub fn ignore_debug(mut self, ignore_debug: bool) -> Self {
+        self.options.ignore_debug = ignore_debug;
+        self
+    }
+
+    pub fn language_debug(mut self, language_debug: bool) -> Self {
+        self.options.language_debug = language_debug;
+        self
+    }
+
+    pub fn sql_trace(mut self, sql_trace: bool) -> Self {
+        self.options.sql_trace = sql_trace;
+        self
+    }
+
+    pub fn build(self) -> SearchOptions {
+        self.options
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum ResultKind {
+    #[default]
+    WholeFile,
+    Ranged,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PathResolution {
+    #[default]
+    Canonical,
+    Fallback,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct FileIdentity {
+    pub display_path: PathBuf,
+    pub resolved_path: PathBuf,
+    pub root_relative_path: Option<PathBuf>,
+    pub resolution: PathResolution,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticSkipReason {
+    UnsupportedLanguage,
+    ParseFailed,
+    ContentUnavailable,
+    BudgetExhausted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct FileSnapshot {
+    pub len: u64,
+    pub modified_unix_millis: Option<i64>,
+    pub readonly: bool,
+    pub permissions_display: String,
+    pub device_id: Option<u64>,
+    pub inode: Option<u64>,
+}
+
+impl FileSnapshot {
+    pub fn from_metadata(metadata: &std::fs::Metadata) -> Self {
+        let readonly = metadata.permissions().readonly();
+        #[cfg(unix)]
+        let permissions_display = crate::formatter::format_mode(metadata.permissions().mode());
+        #[cfg(not(unix))]
+        let permissions_display = if readonly {
+            "readonly".to_string()
+        } else {
+            "readwrite".to_string()
+        };
+
+        Self {
+            len: metadata.len(),
+            modified_unix_millis: metadata
+                .modified()
+                .ok()
+                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_millis() as i64),
+            readonly,
+            permissions_display,
+            #[cfg(unix)]
+            device_id: Some(metadata.dev()),
+            #[cfg(not(unix))]
+            device_id: None,
+            #[cfg(unix)]
+            inode: Some(metadata.ino()),
+            #[cfg(not(unix))]
+            inode: None,
+        }
+    }
+
+    pub fn to_path_metadata(&self) -> rdump_contracts::PathMetadata {
+        rdump_contracts::PathMetadata {
+            size_bytes: self.len,
+            modified_unix_millis: self.modified_unix_millis,
+            readonly: self.readonly,
+            permissions_display: self.permissions_display.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct SearchResultMetadata {
+    pub file: FileIdentity,
+    pub fingerprint: String,
+    pub result_kind: ResultKind,
+    pub semantic_skip_reasons: Vec<SemanticSkipReason>,
+    pub snapshot: Option<FileSnapshot>,
+    pub snapshot_drift: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchMaterializationFailureKind {
+    ContentReadFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchMaterializationError {
+    pub path: PathBuf,
+    pub kind: SearchMaterializationFailureKind,
+    pub snapshot_drift: bool,
+    pub message: String,
+}
+
+impl std::fmt::Display for SearchMaterializationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Failed to materialize {} ({:?}, snapshot_drift={}): {}",
+            self.path.display(),
+            self.kind,
+            self.snapshot_drift,
+            self.message
+        )
+    }
+}
+
+impl std::error::Error for SearchMaterializationError {}
 
 /// A file that matched the search query.
 ///
 /// Contains the file path, all matches within the file, and the file content.
 /// For whole-file matches (boolean predicates like `ext:rs`), the `matches`
 /// vector will be empty.
+///
+/// Snapshot note: discovery/evaluation and content materialization are not a
+/// single filesystem snapshot. If a file changes between those stages, the
+/// content and diagnostics reflect the later read.
 ///
 /// # Example
 ///
@@ -278,6 +492,9 @@ impl Default for SearchOptions {
 ///     path: PathBuf::from("src/lib.rs"),
 ///     matches: vec![],
 ///     content: String::from("fn main() {}"),
+///     content_state: rdump::ContentState::Loaded,
+///     diagnostics: vec![],
+///     metadata: rdump::SearchResultMetadata::default(),
 /// };
 /// assert!(whole_file.is_whole_file_match());
 ///
@@ -292,12 +509,15 @@ impl Default for SearchOptions {
 ///         text: String::from("fn main() {}"),
 ///     }],
 ///     content: String::from("fn main() {}"),
+///     content_state: rdump::ContentState::Loaded,
+///     diagnostics: vec![],
+///     metadata: rdump::SearchResultMetadata::default(),
 /// };
 /// assert_eq!(hunked.matched_lines(), vec![3, 4]);
 /// assert_eq!(hunked.match_count(), 1);
 /// assert_eq!(hunked.total_lines_matched(), 2);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     /// Path to the matched file.
     pub path: PathBuf,
@@ -307,6 +527,15 @@ pub struct SearchResult {
 
     /// Full file content.
     pub content: String,
+
+    /// How the content field was produced for this file.
+    pub content_state: ContentState,
+
+    /// Structured warnings collected while loading or shaping this result.
+    pub diagnostics: Vec<SearchDiagnostic>,
+
+    /// Stable machine-facing metadata for path identity, match semantics, and snapshot context.
+    pub metadata: SearchResultMetadata,
 }
 
 impl SearchResult {
@@ -336,6 +565,23 @@ impl SearchResult {
     pub fn total_lines_matched(&self) -> usize {
         self.matched_lines().len()
     }
+
+    /// Returns true if the content field contains user-visible file text.
+    pub fn content_available(&self) -> bool {
+        self.content_state.is_loaded()
+    }
+
+    pub fn result_kind(&self) -> ResultKind {
+        self.metadata.result_kind
+    }
+
+    pub fn file_identity(&self) -> &FileIdentity {
+        &self.metadata.file
+    }
+
+    pub fn semantic_skip_reasons(&self) -> &[SemanticSkipReason] {
+        &self.metadata.semantic_skip_reasons
+    }
 }
 
 /// A single match within a file.
@@ -361,7 +607,7 @@ impl SearchResult {
 /// assert_eq!(m.byte_len(), 24);
 /// assert_eq!(m.first_line(), "fn main() {}");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Match {
     /// Starting line (1-indexed) of the match.
     pub start_line: usize,
@@ -399,6 +645,69 @@ impl Match {
     }
 }
 
+/// Summary statistics produced by the core search engine.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchStats {
+    pub whole_file_results: usize,
+    pub ranged_results: usize,
+    pub candidate_files: usize,
+    pub prefiltered_files: usize,
+    pub evaluated_files: usize,
+    pub matched_files: usize,
+    pub matched_ranges: usize,
+    pub hidden_skipped: usize,
+    pub ignore_skipped: usize,
+    pub max_depth_skipped: usize,
+    pub unreadable_entries: usize,
+    pub root_boundary_excluded: usize,
+    pub suppressed_too_large: usize,
+    pub suppressed_binary: usize,
+    pub suppressed_secret_like: usize,
+    pub diagnostics: usize,
+    pub walk_millis: u64,
+    pub prefilter_millis: u64,
+    pub evaluate_millis: u64,
+    pub materialize_millis: u64,
+    pub semantic_parse_failures: usize,
+    pub semantic_budget_exhaustions: usize,
+    pub query_cache_hits: usize,
+    pub query_cache_misses: usize,
+    pub tree_cache_hits: usize,
+    pub tree_cache_misses: usize,
+    pub semaphore_wait_millis: u64,
+    pub semantic_parse_failures_by_language: BTreeMap<String, usize>,
+    pub directory_hotspots: Vec<rdump_contracts::DirectoryHotspot>,
+}
+
+/// Collected search results plus engine-level statistics and diagnostics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchReport {
+    pub results: Vec<SearchResult>,
+    pub stats: SearchStats,
+    pub diagnostics: Vec<SearchDiagnostic>,
+}
+
+impl SearchReport {
+    pub fn status(&self) -> rdump_contracts::SearchStatus {
+        if !self.results.is_empty()
+            && self
+                .results
+                .iter()
+                .all(|result| !result.content_available())
+        {
+            return rdump_contracts::SearchStatus::PolicySuppressed;
+        }
+        if self
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.kind == crate::content::DiagnosticKind::ContentSkipped)
+        {
+            return rdump_contracts::SearchStatus::PartialSuccess;
+        }
+        rdump_contracts::SearchStatus::FullSuccess
+    }
+}
+
 /// Converts tree-sitter ranges into user-facing `Match` structs.
 fn ranges_to_matches(content: &str, ranges: &[TsRange]) -> Vec<Match> {
     if content.is_empty() {
@@ -422,43 +731,6 @@ fn ranges_to_matches(content: &str, ranges: &[TsRange]) -> Vec<Match> {
         .collect()
 }
 
-fn read_file_content_for_iterator(path: &Path) -> Result<String> {
-    let metadata = fs::metadata(path).map_err(|e| match e.kind() {
-        ErrorKind::NotFound => anyhow::anyhow!("File no longer exists: {}", path.display()),
-        ErrorKind::PermissionDenied => {
-            anyhow::anyhow!("Permission denied reading: {}", path.display())
-        }
-        _ => anyhow::anyhow!("Failed to read {}: {}", path.display(), e),
-    })?;
-
-    if metadata.len() > MAX_FILE_SIZE {
-        bail!(
-            "File {} exceeds maximum size limit ({} bytes > {} bytes)",
-            path.display(),
-            metadata.len(),
-            MAX_FILE_SIZE
-        );
-    }
-
-    let bytes = fs::read(path).map_err(|e| match e.kind() {
-        ErrorKind::NotFound => anyhow::anyhow!("File no longer exists: {}", path.display()),
-        ErrorKind::PermissionDenied => {
-            anyhow::anyhow!("Permission denied reading: {}", path.display())
-        }
-        _ => anyhow::anyhow!("Failed to read {}: {}", path.display(), e),
-    })?;
-
-    let check_len = bytes.len().min(8192);
-    if is_probably_binary(&bytes[..check_len]) {
-        bail!("Skipping binary file: {}", path.display());
-    }
-
-    let content = String::from_utf8(bytes)
-        .map_err(|e| anyhow::anyhow!("Invalid UTF-8 in {}: {}", path.display(), e))?;
-
-    Ok(content)
-}
-
 // =============================================================================
 // Library API Iterators
 // =============================================================================
@@ -477,14 +749,34 @@ fn read_file_content_for_iterator(path: &Path) -> Result<String> {
 #[derive(Debug, Clone)]
 pub struct SearchResultIterator {
     /// Raw results from `perform_search_internal`.
-    inner: std::vec::IntoIter<(PathBuf, Vec<TsRange>)>,
+    inner: std::vec::IntoIter<RawSearchItem>,
+    stats: SearchStats,
+    diagnostics: Vec<SearchDiagnostic>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RawSearchItem {
+    pub display_path: PathBuf,
+    pub resolved_path: PathBuf,
+    pub root_relative_path: Option<PathBuf>,
+    pub resolution: PathResolution,
+    pub ranges: Vec<TsRange>,
+    pub diagnostics: Vec<SearchDiagnostic>,
+    pub semantic_skip_reasons: Vec<SemanticSkipReason>,
+    pub snapshot: Option<FileSnapshot>,
 }
 
 impl SearchResultIterator {
     /// Create a new iterator from raw search results.
-    pub(crate) fn new(results: Vec<(PathBuf, Vec<TsRange>)>) -> Self {
+    pub(crate) fn new(
+        results: Vec<RawSearchItem>,
+        stats: SearchStats,
+        diagnostics: Vec<SearchDiagnostic>,
+    ) -> Self {
         Self {
             inner: results.into_iter(),
+            stats,
+            diagnostics,
         }
     }
 
@@ -492,29 +784,100 @@ impl SearchResultIterator {
     pub fn remaining(&self) -> usize {
         self.inner.len()
     }
+
+    /// Returns search-engine statistics gathered before result materialization.
+    pub fn stats(&self) -> &SearchStats {
+        &self.stats
+    }
+
+    /// Returns engine-level diagnostics gathered before result materialization.
+    pub fn diagnostics(&self) -> &[SearchDiagnostic] {
+        &self.diagnostics
+    }
 }
 
 impl Iterator for SearchResultIterator {
     type Item = Result<SearchResult>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (path, ranges) = self.inner.next()?;
+        let raw = self.inner.next()?;
 
-        let content = match read_file_content_for_iterator(&path) {
+        let loaded = match crate::content::load_search_content(&raw.resolved_path) {
             Ok(c) => c,
-            Err(e) => return Some(Err(e)),
+            Err(e) => {
+                let snapshot_drift = raw.snapshot.is_some();
+                let message = if snapshot_drift {
+                    format!(
+                        "Materialization for {} may have drifted since evaluation: {e}",
+                        raw.resolved_path.display()
+                    )
+                } else {
+                    e.to_string()
+                };
+                return Some(Err(SearchMaterializationError {
+                    path: raw.display_path,
+                    kind: SearchMaterializationFailureKind::ContentReadFailed,
+                    snapshot_drift,
+                    message,
+                }
+                .into()));
+            }
         };
 
-        let matches = if ranges.is_empty() {
+        let content = loaded.content.as_ref().to_string();
+        let matches = if raw.ranges.is_empty() || !loaded.state.is_loaded() {
             Vec::new()
         } else {
-            ranges_to_matches(&content, &ranges)
+            ranges_to_matches(&content, &raw.ranges)
+        };
+
+        let mut diagnostics = raw.diagnostics;
+        diagnostics.extend(loaded.diagnostics);
+        let mut snapshot_drift = false;
+        if let Some(snapshot) = &raw.snapshot {
+            if let Ok(metadata) = std::fs::metadata(&raw.resolved_path) {
+                let current_snapshot = FileSnapshot::from_metadata(&metadata);
+                if current_snapshot != *snapshot {
+                    snapshot_drift = true;
+                    diagnostics.push(SearchDiagnostic::snapshot_drift(
+                        raw.display_path.clone(),
+                        "File identity or metadata changed between evaluation and content materialization.",
+                    ));
+                }
+            }
+        }
+
+        let result_kind = if matches.is_empty() {
+            ResultKind::WholeFile
+        } else {
+            ResultKind::Ranged
         };
 
         Some(Ok(SearchResult {
-            path,
+            path: raw.display_path.clone(),
             matches,
             content,
+            content_state: loaded.state,
+            diagnostics,
+            metadata: SearchResultMetadata {
+                fingerprint: result_fingerprint(
+                    &raw.display_path,
+                    &raw.resolved_path,
+                    result_kind,
+                    raw.snapshot.as_ref(),
+                    &raw.semantic_skip_reasons,
+                ),
+                file: FileIdentity {
+                    display_path: raw.display_path,
+                    resolved_path: raw.resolved_path,
+                    root_relative_path: raw.root_relative_path,
+                    resolution: raw.resolution,
+                },
+                result_kind,
+                semantic_skip_reasons: raw.semantic_skip_reasons,
+                snapshot: raw.snapshot,
+                snapshot_drift,
+            },
         }))
     }
 
@@ -524,9 +887,85 @@ impl Iterator for SearchResultIterator {
     }
 }
 
+fn result_fingerprint(
+    display_path: &PathBuf,
+    resolved_path: &PathBuf,
+    result_kind: ResultKind,
+    snapshot: Option<&FileSnapshot>,
+    semantic_skip_reasons: &[SemanticSkipReason],
+) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    display_path.hash(&mut hasher);
+    resolved_path.hash(&mut hasher);
+    result_kind.hash(&mut hasher);
+    if let Some(snapshot) = snapshot {
+        snapshot.len.hash(&mut hasher);
+        snapshot.modified_unix_millis.hash(&mut hasher);
+        snapshot.readonly.hash(&mut hasher);
+        snapshot.permissions_display.hash(&mut hasher);
+        snapshot.device_id.hash(&mut hasher);
+        snapshot.inode.hash(&mut hasher);
+    }
+    for reason in semantic_skip_reasons {
+        reason.hash(&mut hasher);
+    }
+    format!("{:016x}", hasher.finish())
+}
+
 impl ExactSizeIterator for SearchResultIterator {}
 
 impl std::iter::FusedIterator for SearchResultIterator {}
+
+/// Iterator over matching file paths without content materialization.
+#[derive(Debug, Clone)]
+pub struct SearchPathIterator {
+    inner: std::vec::IntoIter<PathBuf>,
+    stats: SearchStats,
+    diagnostics: Vec<SearchDiagnostic>,
+}
+
+impl SearchPathIterator {
+    pub(crate) fn new(
+        paths: Vec<PathBuf>,
+        stats: SearchStats,
+        diagnostics: Vec<SearchDiagnostic>,
+    ) -> Self {
+        Self {
+            inner: paths.into_iter(),
+            stats,
+            diagnostics,
+        }
+    }
+
+    pub fn remaining(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn stats(&self) -> &SearchStats {
+        &self.stats
+    }
+
+    pub fn diagnostics(&self) -> &[SearchDiagnostic] {
+        &self.diagnostics
+    }
+}
+
+impl Iterator for SearchPathIterator {
+    type Item = Result<PathBuf>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(Ok)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.inner.len();
+        (len, Some(len))
+    }
+}
+
+impl ExactSizeIterator for SearchPathIterator {}
+
+impl std::iter::FusedIterator for SearchPathIterator {}
 
 // =============================================================================
 // Library API Functions
@@ -536,7 +975,9 @@ impl std::iter::FusedIterator for SearchResultIterator {}
 ///
 /// This is the preferred API for large codebases: it parses the query, resolves
 /// presets, validates the root, and returns an iterator that loads file content
-/// only when each item is consumed.
+/// only when each item is consumed. Discovery and evaluation are still eager:
+/// the iterator defers content reads, not candidate walking or predicate
+/// evaluation.
 ///
 /// # Arguments
 /// - `query`: RQL string (e.g., `ext:rs & func:main`). Empty string is allowed
@@ -583,8 +1024,12 @@ impl std::iter::FusedIterator for SearchResultIterator {}
 /// # Ok::<(), anyhow::Error>(())
 /// ```
 pub fn search_iter(query: &str, options: SearchOptions) -> Result<SearchResultIterator> {
-    let raw_results = commands::search::perform_search_internal(query, &options)?;
-    Ok(SearchResultIterator::new(raw_results))
+    let raw_report = commands::search::perform_search_internal(query, &options)?;
+    Ok(SearchResultIterator::new(
+        raw_report.results,
+        raw_report.stats,
+        raw_report.diagnostics,
+    ))
 }
 
 /// Run an rdump query and collect all results into memory.
@@ -627,7 +1072,52 @@ pub fn search_iter(query: &str, options: SearchOptions) -> Result<SearchResultIt
 /// # Ok::<(), anyhow::Error>(())
 /// ```
 pub fn search(query: &str, options: SearchOptions) -> Result<Vec<SearchResult>> {
-    search_iter(query, options)?.collect()
+    Ok(search_with_stats(query, options)?.results)
+}
+
+/// Run an rdump query and return results plus engine-level statistics.
+pub fn search_with_stats(query: &str, options: SearchOptions) -> Result<SearchReport> {
+    let mut iter = search_iter(query, options)?;
+    let mut diagnostics = iter.diagnostics().to_vec();
+    let mut results = Vec::with_capacity(iter.remaining());
+    let materialize_started = std::time::Instant::now();
+
+    for result in &mut iter {
+        let result = result?;
+        diagnostics.extend(result.diagnostics.iter().cloned());
+        results.push(result);
+    }
+
+    let mut stats = iter.stats().clone();
+    stats.diagnostics = diagnostics.len();
+    stats.materialize_millis = materialize_started.elapsed().as_millis() as u64;
+
+    Ok(SearchReport {
+        results,
+        stats,
+        diagnostics,
+    })
+}
+
+/// Run an rdump query and stream only matching paths.
+pub fn search_path_iter(query: &str, options: SearchOptions) -> Result<SearchPathIterator> {
+    let raw_report = commands::search::perform_search_internal(query, &options)?;
+    let paths = raw_report
+        .results
+        .iter()
+        .map(|item| item.display_path.clone())
+        .collect();
+
+    Ok(SearchPathIterator::new(
+        paths,
+        raw_report.stats,
+        raw_report.diagnostics,
+    ))
+}
+
+/// Run an rdump query and collect only matching paths.
+pub fn search_paths(query: &str, options: SearchOptions) -> Result<Vec<PathBuf>> {
+    search_path_iter(query, options)?.collect()
 }
 
 // =============================================================================
@@ -636,30 +1126,42 @@ pub fn search(query: &str, options: SearchOptions) -> Result<Vec<SearchResult>> 
 
 // These structs and enums define the public API of our CLI.
 // They need to be public so the `commands` modules can use them.
-#[derive(Parser, Debug)]
-#[command(
-    version,
-    about = "A fast, expressive, code-aware tool to find and dump file contents."
+#[derive(Debug)]
+#[cfg_attr(feature = "cli", derive(Parser))]
+#[cfg_attr(
+    feature = "cli",
+    command(
+        version,
+        about = "A fast, expressive, code-aware tool to find and dump file contents."
+    )
 )]
 pub struct Cli {
-    #[command(subcommand)]
+    #[cfg_attr(feature = "cli", command(subcommand))]
     pub command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Debug)]
+#[cfg_attr(feature = "cli", derive(Subcommand))]
 pub enum Commands {
     /// Search for files using a query (default command).
-    #[command(visible_alias = "s")]
+    #[cfg_attr(feature = "cli", command(visible_alias = "s"))]
     Search(SearchArgs),
+    /// Inspect query expansion, validation, and normalization.
+    #[cfg_attr(feature = "cli", command(visible_alias = "q"))]
+    Query(QueryArgs),
+    /// Inspect config resolution and merged config state.
+    #[cfg_attr(feature = "cli", command(visible_alias = "cfg"))]
+    Config(ConfigArgs),
     /// List supported languages and their available predicates.
-    #[command(visible_alias = "l")]
+    #[cfg_attr(feature = "cli", command(visible_alias = "l"))]
     Lang(LangArgs),
     /// Manage saved presets.
-    #[command(visible_alias = "p")]
+    #[cfg_attr(feature = "cli", command(visible_alias = "p"))]
     Preset(PresetArgs),
 }
 
-#[derive(Debug, Clone, ValueEnum, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
 pub enum ColorChoice {
     #[default]
     Auto,
@@ -667,12 +1169,83 @@ pub enum ColorChoice {
     Never,
 }
 
-#[derive(Debug, Clone, ValueEnum, Copy)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
+pub enum TimeFormat {
+    #[default]
+    Local,
+    Utc,
+    Iso,
+    Unix,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
 pub enum SqlDialectFlag {
     Generic,
     Postgres,
     Mysql,
     Sqlite,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
+pub enum SemanticMatchModeFlag {
+    #[default]
+    Exact,
+    CaseInsensitive,
+    Prefix,
+    Regex,
+    Wildcard,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
+pub enum ExecutionProfileFlag {
+    Interactive,
+    Batch,
+    Agent,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
+pub enum PathDisplayModeFlag {
+    #[default]
+    Relative,
+    Absolute,
+    RootRelative,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
+pub enum LineEndingModeFlag {
+    #[default]
+    Preserve,
+    Normalize,
+}
+
+impl From<SemanticMatchModeFlag> for rdump_contracts::SemanticMatchMode {
+    fn from(value: SemanticMatchModeFlag) -> Self {
+        match value {
+            SemanticMatchModeFlag::Exact => rdump_contracts::SemanticMatchMode::Exact,
+            SemanticMatchModeFlag::CaseInsensitive => {
+                rdump_contracts::SemanticMatchMode::CaseInsensitive
+            }
+            SemanticMatchModeFlag::Prefix => rdump_contracts::SemanticMatchMode::Prefix,
+            SemanticMatchModeFlag::Regex => rdump_contracts::SemanticMatchMode::Regex,
+            SemanticMatchModeFlag::Wildcard => rdump_contracts::SemanticMatchMode::Wildcard,
+        }
+    }
+}
+
+impl From<ExecutionProfileFlag> for rdump_contracts::ExecutionProfile {
+    fn from(value: ExecutionProfileFlag) -> Self {
+        match value {
+            ExecutionProfileFlag::Interactive => rdump_contracts::ExecutionProfile::Interactive,
+            ExecutionProfileFlag::Batch => rdump_contracts::ExecutionProfile::Batch,
+            ExecutionProfileFlag::Agent => rdump_contracts::ExecutionProfile::Agent,
+        }
+    }
 }
 
 impl From<SqlDialectFlag> for CodeSqlDialect {
@@ -686,7 +1259,49 @@ impl From<SqlDialectFlag> for CodeSqlDialect {
     }
 }
 
-#[derive(Parser, Debug, Default)]
+impl From<SqlDialectFlag> for rdump_contracts::SqlDialectOption {
+    fn from(value: SqlDialectFlag) -> Self {
+        match value {
+            SqlDialectFlag::Generic => rdump_contracts::SqlDialectOption::Generic,
+            SqlDialectFlag::Postgres => rdump_contracts::SqlDialectOption::Postgres,
+            SqlDialectFlag::Mysql => rdump_contracts::SqlDialectOption::Mysql,
+            SqlDialectFlag::Sqlite => rdump_contracts::SqlDialectOption::Sqlite,
+        }
+    }
+}
+
+impl From<PathDisplayModeFlag> for rdump_contracts::PathDisplayMode {
+    fn from(value: PathDisplayModeFlag) -> Self {
+        match value {
+            PathDisplayModeFlag::Relative => rdump_contracts::PathDisplayMode::Relative,
+            PathDisplayModeFlag::Absolute => rdump_contracts::PathDisplayMode::Absolute,
+            PathDisplayModeFlag::RootRelative => rdump_contracts::PathDisplayMode::RootRelative,
+        }
+    }
+}
+
+impl From<LineEndingModeFlag> for rdump_contracts::LineEndingMode {
+    fn from(value: LineEndingModeFlag) -> Self {
+        match value {
+            LineEndingModeFlag::Preserve => rdump_contracts::LineEndingMode::Preserve,
+            LineEndingModeFlag::Normalize => rdump_contracts::LineEndingMode::Normalize,
+        }
+    }
+}
+
+impl From<rdump_contracts::SqlDialectOption> for CodeSqlDialect {
+    fn from(value: rdump_contracts::SqlDialectOption) -> Self {
+        match value {
+            rdump_contracts::SqlDialectOption::Generic => CodeSqlDialect::Generic,
+            rdump_contracts::SqlDialectOption::Postgres => CodeSqlDialect::Postgres,
+            rdump_contracts::SqlDialectOption::Mysql => CodeSqlDialect::Mysql,
+            rdump_contracts::SqlDialectOption::Sqlite => CodeSqlDialect::Sqlite,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "cli", derive(Parser))]
 pub struct SearchArgs {
     /// The query string to search for, using rdump Query Language (RQL).
     ///
@@ -743,87 +1358,267 @@ pub struct SearchArgs {
     /// customhook:<str>        - A custom hook definition (e.g., `useAuth`)
     /// prop:<str>              - A prop being passed to a JSX element
     /// ```
-    #[arg(verbatim_doc_comment, name = "QUERY")]
+    #[cfg_attr(feature = "cli", arg(verbatim_doc_comment, name = "QUERY"))]
     pub query: Option<String>,
     /// Force the SQL dialect to use for .sql files (overrides auto-detection).
-    #[arg(long, value_enum, ignore_case = true)]
+    #[cfg_attr(feature = "cli", arg(long, value_enum, ignore_case = true))]
     pub dialect: Option<SqlDialectFlag>,
-    #[arg(long, short)]
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub sql_strict: bool,
+    #[cfg_attr(feature = "cli", arg(long, short))]
     pub preset: Vec<String>,
-    #[arg(short, long, default_value = ".")]
+    #[cfg_attr(feature = "cli", arg(short, long, default_value = "."))]
     pub root: PathBuf,
-    #[arg(short, long)]
+    #[cfg_attr(feature = "cli", arg(short, long))]
     pub output: Option<PathBuf>,
-    #[arg(short, long)]
+    #[cfg_attr(feature = "cli", arg(short, long))]
     pub line_numbers: bool,
-    #[arg(long, help = "Alias for --format=cat, useful for piping")]
+    #[cfg_attr(
+        feature = "cli",
+        arg(long, help = "Alias for --format=cat, useful for piping")
+    )]
     pub no_headers: bool,
-    #[arg(long, value_enum, default_value_t = Format::Hunks)]
+    #[cfg_attr(feature = "cli", arg(long, value_enum, default_value_t = Format::Hunks))]
     pub format: Format,
-    #[arg(long)]
+    #[cfg_attr(feature = "cli", arg(long))]
     pub no_ignore: bool,
-    #[arg(long)]
+    #[cfg_attr(feature = "cli", arg(long))]
     pub hidden: bool,
-    #[arg(long, value_enum, default_value_t = ColorChoice::Auto, help = "When to use syntax highlighting")]
+    #[cfg_attr(
+        feature = "cli",
+        arg(long, value_enum, default_value_t = ColorChoice::Auto, help = "When to use syntax highlighting")
+    )]
     pub color: ColorChoice,
-    #[arg(long)]
+    #[cfg_attr(feature = "cli", arg(long, value_enum, default_value_t = TimeFormat::Local))]
+    pub time_format: TimeFormat,
+    #[cfg_attr(feature = "cli", arg(long))]
     pub max_depth: Option<usize>,
-    #[arg(
-        long,
-        short = 'C',
-        value_name = "LINES",
-        help = "Show LINES of context around matches for --format=hunks"
+    #[cfg_attr(feature = "cli", arg(long, conflicts_with = "fail_fast"))]
+    pub skip_errors: bool,
+    #[cfg_attr(feature = "cli", arg(long, conflicts_with = "skip_errors"))]
+    pub fail_fast: bool,
+    #[cfg_attr(feature = "cli", arg(long, value_name = "MILLIS"))]
+    pub execution_budget_ms: Option<u64>,
+    #[cfg_attr(feature = "cli", arg(long, value_name = "MILLIS"))]
+    pub semantic_budget_ms: Option<u64>,
+    #[cfg_attr(feature = "cli", arg(long, value_name = "COUNT"))]
+    pub max_semantic_matches_per_file: Option<usize>,
+    #[cfg_attr(feature = "cli", arg(long, value_name = "LANG"))]
+    pub language_override: Option<String>,
+    #[cfg_attr(
+        feature = "cli",
+        arg(long, value_enum, default_value_t = SemanticMatchModeFlag::Exact)
+    )]
+    pub semantic_match_mode: SemanticMatchModeFlag,
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub semantic_strict: bool,
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub strict_path_resolution: bool,
+    #[cfg_attr(feature = "cli", arg(long = "no-snapshot-drift-detection"))]
+    pub no_snapshot_drift_detection: bool,
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub ignore_debug: bool,
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub language_debug: bool,
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub sql_trace: bool,
+    #[cfg_attr(feature = "cli", arg(long, value_enum))]
+    pub execution_profile: Option<ExecutionProfileFlag>,
+    #[cfg_attr(feature = "cli", arg(long, default_value_t = true))]
+    pub show_suppressed_placeholders: bool,
+    #[cfg_attr(feature = "cli", arg(long, value_enum, default_value_t = PathDisplayModeFlag::Relative))]
+    pub path_display: PathDisplayModeFlag,
+    #[cfg_attr(feature = "cli", arg(long, value_enum, default_value_t = LineEndingModeFlag::Preserve))]
+    pub line_endings: LineEndingModeFlag,
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub no_match_text: bool,
+    #[cfg_attr(
+        feature = "cli",
+        arg(
+            long,
+            short = 'C',
+            value_name = "LINES",
+            help = "Show LINES of context around matches for --format=hunks"
+        )
     )]
     pub context: Option<usize>,
 
     /// List files with metadata instead of dumping content. Alias for --format=find
-    #[arg(long)]
+    #[cfg_attr(feature = "cli", arg(long))]
     pub find: bool,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Debug)]
+#[cfg_attr(feature = "cli", derive(Parser))]
 pub struct LangArgs {
-    #[command(subcommand)]
+    #[cfg_attr(feature = "cli", command(subcommand))]
     pub action: Option<LangAction>,
 }
 
-#[derive(Subcommand, Debug, Clone)]
+#[derive(Debug)]
+#[cfg_attr(feature = "cli", derive(Parser))]
+pub struct QueryArgs {
+    #[cfg_attr(feature = "cli", command(subcommand))]
+    pub action: QueryAction,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "cli", derive(Subcommand))]
+pub enum QueryAction {
+    /// Explain preset expansion, lints, and planned stages for a query.
+    Explain {
+        #[cfg_attr(feature = "cli", arg(name = "QUERY"))]
+        query: String,
+        #[cfg_attr(feature = "cli", arg(long, short))]
+        preset: Vec<String>,
+        #[cfg_attr(feature = "cli", arg(long))]
+        json: bool,
+    },
+    /// Print the effective query after preset expansion.
+    Effective {
+        #[cfg_attr(feature = "cli", arg(name = "QUERY"))]
+        query: Option<String>,
+        #[cfg_attr(feature = "cli", arg(long, short))]
+        preset: Vec<String>,
+    },
+    /// Validate a query and print lints or validation errors.
+    Validate {
+        #[cfg_attr(feature = "cli", arg(name = "QUERY"))]
+        query: String,
+        #[cfg_attr(feature = "cli", arg(long, short))]
+        preset: Vec<String>,
+        #[cfg_attr(feature = "cli", arg(long))]
+        json: bool,
+    },
+    /// Normalize a query from its AST back into a canonical string form.
+    Normalize {
+        #[cfg_attr(feature = "cli", arg(name = "QUERY"))]
+        query: String,
+    },
+    /// Print the stable serialized AST for a query.
+    Ast {
+        #[cfg_attr(feature = "cli", arg(name = "QUERY"))]
+        query: String,
+    },
+    /// Print predicate reference material generated from the live predicate registry.
+    Reference {
+        #[cfg_attr(feature = "cli", arg(long))]
+        json: bool,
+    },
+    /// Explain why a query returned zero results under the current root and presets.
+    WhyNoResults {
+        #[cfg_attr(feature = "cli", arg(name = "QUERY"))]
+        query: String,
+        #[cfg_attr(feature = "cli", arg(long, short))]
+        preset: Vec<String>,
+        #[cfg_attr(feature = "cli", arg(long, default_value = "."))]
+        root: PathBuf,
+    },
+    /// Explain how one file behaved across metadata and semantic evaluation stages.
+    WhyFile {
+        #[cfg_attr(feature = "cli", arg(name = "QUERY"))]
+        query: String,
+        #[cfg_attr(feature = "cli", arg(name = "PATH"))]
+        path: PathBuf,
+        #[cfg_attr(feature = "cli", arg(long, short))]
+        preset: Vec<String>,
+        #[cfg_attr(feature = "cli", arg(long, default_value = "."))]
+        root: PathBuf,
+    },
+    /// Explain SQL dialect detection for a specific .sql file.
+    Dialect {
+        #[cfg_attr(feature = "cli", arg(name = "PATH"))]
+        path: PathBuf,
+    },
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "cli", derive(Parser))]
+pub struct ConfigArgs {
+    #[cfg_attr(feature = "cli", command(subcommand))]
+    pub action: ConfigAction,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "cli", derive(Subcommand))]
+pub enum ConfigAction {
+    /// Print the preferred global config path.
+    Path,
+    /// Print the merged config visible from the current working directory.
+    Show,
+    /// Validate the merged config and preset graph before executing a search.
+    Validate {
+        #[cfg_attr(feature = "cli", arg(long))]
+        json: bool,
+    },
+    /// Validate runtime assumptions, config visibility, and execution defaults.
+    Doctor {
+        #[cfg_attr(feature = "cli", arg(long))]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "cli", derive(Subcommand))]
 pub enum LangAction {
     /// List all supported languages.
     List,
     /// Describe the predicates available for a specific language.
     Describe { language: String },
+    /// Inventory the current root by extension and semantic-capable language coverage.
+    Inventory {
+        #[cfg_attr(feature = "cli", arg(long, default_value = "."))]
+        root: PathBuf,
+        #[cfg_attr(feature = "cli", arg(long))]
+        json: bool,
+    },
+    /// Print a generated language-by-predicate support matrix.
+    Matrix {
+        #[cfg_attr(feature = "cli", arg(long))]
+        json: bool,
+    },
 }
 
-#[derive(Parser, Debug)]
+#[derive(Debug)]
+#[cfg_attr(feature = "cli", derive(Parser))]
 pub struct PresetArgs {
-    #[command(subcommand)]
+    #[cfg_attr(feature = "cli", command(subcommand))]
     pub action: PresetAction,
 }
 
-#[derive(Subcommand, Debug, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "cli", derive(Subcommand))]
 pub enum PresetAction {
     /// List all available presets.
     List,
     /// Add or update a preset in the global config file.
     Add {
-        #[arg(required = true)]
+        #[cfg_attr(feature = "cli", arg(required = true))]
         name: String,
-        #[arg(required = true)]
+        #[cfg_attr(feature = "cli", arg(required = true))]
         query: String,
     },
     /// Remove a preset from the global config file.
     Remove {
-        #[arg(required = true)]
+        #[cfg_attr(feature = "cli", arg(required = true))]
         name: String,
     },
 }
 
-#[derive(Debug, Clone, ValueEnum, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
 pub enum Format {
     /// Show only the specific code blocks ("hunks") that match a semantic query
     #[default]
     Hunks,
+    /// One line per file with match counts and content state
+    Summary,
+    /// One line per file with diagnostics and content policy details
+    Diagnostics,
+    /// One line per match with line/column locations
+    Matches,
+    /// Context snippets around each match
+    Snippets,
     /// Human-readable markdown with file headers
     Markdown,
     /// Machine-readable JSON
@@ -837,11 +1632,14 @@ pub enum Format {
 }
 
 // This is the function that will be called from main.rs
+#[cfg(feature = "cli")]
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Search(args) => run_search(args),
+        Commands::Query(args) => run_query(args.action),
+        Commands::Config(args) => run_config(args.action),
         Commands::Lang(args) => {
             // Default to `list` if no subcommand is given for `lang`
             let action = args.action.unwrap_or(LangAction::List);
@@ -854,9 +1652,38 @@ pub fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::limits::MAX_FILE_SIZE;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
+
+    fn sample_result(path: &str, content: &str, matches: Vec<Match>) -> SearchResult {
+        SearchResult {
+            path: PathBuf::from(path),
+            matches,
+            content: content.to_string(),
+            content_state: ContentState::Loaded,
+            diagnostics: vec![],
+            metadata: SearchResultMetadata::default(),
+        }
+    }
+
+    fn empty_stats() -> SearchStats {
+        SearchStats::default()
+    }
+
+    fn raw_item(path: PathBuf, ranges: Vec<TsRange>) -> RawSearchItem {
+        RawSearchItem {
+            display_path: path.clone(),
+            resolved_path: path,
+            root_relative_path: None,
+            resolution: PathResolution::Canonical,
+            ranges,
+            diagnostics: vec![],
+            semantic_skip_reasons: vec![],
+            snapshot: None,
+        }
+    }
 
     #[test]
     fn test_sql_dialect_flag_conversion_generic() {
@@ -920,19 +1747,16 @@ mod tests {
 
     #[test]
     fn test_is_whole_file_match_empty() {
-        let result = SearchResult {
-            path: PathBuf::from("test.rs"),
-            matches: vec![],
-            content: "fn main() {}".to_string(),
-        };
+        let result = sample_result("test.rs", "fn main() {}", vec![]);
         assert!(result.is_whole_file_match());
     }
 
     #[test]
     fn test_is_whole_file_match_with_matches() {
-        let result = SearchResult {
-            path: PathBuf::from("test.rs"),
-            matches: vec![Match {
+        let result = sample_result(
+            "test.rs",
+            "fn main() {}",
+            vec![Match {
                 start_line: 1,
                 end_line: 1,
                 start_column: 0,
@@ -940,16 +1764,16 @@ mod tests {
                 byte_range: 0..12,
                 text: "fn main() {}".to_string(),
             }],
-            content: "fn main() {}".to_string(),
-        };
+        );
         assert!(!result.is_whole_file_match());
     }
 
     #[test]
     fn test_matched_lines_single_match() {
-        let result = SearchResult {
-            path: PathBuf::from("test.rs"),
-            matches: vec![Match {
+        let result = sample_result(
+            "test.rs",
+            "...",
+            vec![Match {
                 start_line: 5,
                 end_line: 7,
                 start_column: 0,
@@ -957,16 +1781,16 @@ mod tests {
                 byte_range: 0..100,
                 text: "...".to_string(),
             }],
-            content: "...".to_string(),
-        };
+        );
         assert_eq!(result.matched_lines(), vec![5, 6, 7]);
     }
 
     #[test]
     fn test_matched_lines_overlapping() {
-        let result = SearchResult {
-            path: PathBuf::from("test.rs"),
-            matches: vec![
+        let result = sample_result(
+            "test.rs",
+            "...",
+            vec![
                 Match {
                     start_line: 1,
                     end_line: 3,
@@ -984,26 +1808,22 @@ mod tests {
                     text: "...".to_string(),
                 },
             ],
-            content: "...".to_string(),
-        };
+        );
         assert_eq!(result.matched_lines(), vec![1, 2, 3, 4]);
     }
 
     #[test]
     fn test_matched_lines_empty_matches() {
-        let result = SearchResult {
-            path: PathBuf::from("test.rs"),
-            matches: vec![],
-            content: "...".to_string(),
-        };
+        let result = sample_result("test.rs", "...", vec![]);
         assert_eq!(result.matched_lines(), Vec::<usize>::new());
     }
 
     #[test]
     fn test_match_count() {
-        let result = SearchResult {
-            path: PathBuf::from("test.rs"),
-            matches: vec![
+        let result = sample_result(
+            "test.rs",
+            "...",
+            vec![
                 Match {
                     start_line: 1,
                     end_line: 1,
@@ -1021,16 +1841,16 @@ mod tests {
                     text: "fn b()".to_string(),
                 },
             ],
-            content: "...".to_string(),
-        };
+        );
         assert_eq!(result.match_count(), 2);
     }
 
     #[test]
     fn test_total_lines_matched() {
-        let result = SearchResult {
-            path: PathBuf::from("test.rs"),
-            matches: vec![
+        let result = sample_result(
+            "test.rs",
+            "...",
+            vec![
                 Match {
                     start_line: 1,
                     end_line: 3,
@@ -1048,8 +1868,7 @@ mod tests {
                     text: "...".to_string(),
                 },
             ],
-            content: "...".to_string(),
-        };
+        );
         assert_eq!(result.total_lines_matched(), 4);
     }
 
@@ -1302,10 +2121,10 @@ mod tests {
     #[test]
     fn test_search_result_iterator_size_hint_and_remaining() {
         let results = vec![
-            (PathBuf::from("file1.txt"), vec![]),
-            (PathBuf::from("file2.txt"), vec![]),
+            raw_item(PathBuf::from("file1.txt"), vec![]),
+            raw_item(PathBuf::from("file2.txt"), vec![]),
         ];
-        let mut iter = SearchResultIterator::new(results);
+        let mut iter = SearchResultIterator::new(results, empty_stats(), vec![]);
 
         assert_eq!(iter.size_hint(), (2, Some(2)));
         assert_eq!(iter.remaining(), 2);
@@ -1324,8 +2143,11 @@ mod tests {
         fs::write(&file_ok, "ok").unwrap();
         let missing = dir.path().join("missing.txt");
 
-        let results = vec![(file_ok.clone(), vec![]), (missing.clone(), vec![])];
-        let mut iter = SearchResultIterator::new(results);
+        let results = vec![
+            raw_item(file_ok.clone(), vec![]),
+            raw_item(missing.clone(), vec![]),
+        ];
+        let mut iter = SearchResultIterator::new(results, empty_stats(), vec![]);
 
         let first = iter.next().unwrap();
         assert!(first.is_ok());
@@ -1350,10 +2172,12 @@ mod tests {
         }
 
         let results: Vec<_> = (0..3)
-            .map(|i| (dir.path().join(format!("file{i}.txt")), vec![]))
+            .map(|i| raw_item(dir.path().join(format!("file{i}.txt")), vec![]))
             .collect();
 
-        let taken: Vec<_> = SearchResultIterator::new(results).take(1).collect();
+        let taken: Vec<_> = SearchResultIterator::new(results, empty_stats(), vec![])
+            .take(1)
+            .collect();
         assert_eq!(taken.len(), 1);
         assert!(taken[0].is_ok());
     }
@@ -1364,26 +2188,37 @@ mod tests {
         let file = dir.path().join("file.txt");
         fs::write(&file, "hello world").unwrap();
 
-        let mut iter = SearchResultIterator::new(vec![(file.clone(), vec![])]);
+        let mut iter =
+            SearchResultIterator::new(vec![raw_item(file.clone(), vec![])], empty_stats(), vec![]);
         let result = iter.next().unwrap().unwrap();
 
         assert!(result.is_whole_file_match());
         assert!(result.matches.is_empty());
         assert_eq!(result.content, "hello world");
+        assert_eq!(result.content_state, ContentState::Loaded);
+        assert!(result.diagnostics.is_empty());
     }
 
     #[test]
-    fn test_iterator_large_file_error() {
+    fn test_iterator_large_file_skips_content() {
         let dir = tempdir().unwrap();
         let file = dir.path().join("large.txt");
         let bytes = vec![b'x'; (MAX_FILE_SIZE + 1) as usize];
         fs::write(&file, &bytes).unwrap();
 
-        let mut iter = SearchResultIterator::new(vec![(file.clone(), vec![])]);
-        let err = iter.next().unwrap().unwrap_err().to_string();
+        let mut iter =
+            SearchResultIterator::new(vec![raw_item(file.clone(), vec![])], empty_stats(), vec![]);
+        let result = iter.next().unwrap().unwrap();
 
-        assert!(err.contains("exceeds maximum size limit"));
-        assert!(err.contains(file.to_string_lossy().as_ref()));
+        assert_eq!(
+            result.content_state,
+            ContentState::Skipped {
+                reason: ContentSkipReason::TooLarge
+            }
+        );
+        assert!(result.content.is_empty());
+        assert_eq!(result.match_count(), 0);
+        assert!(!result.diagnostics.is_empty());
     }
 
     #[test]
@@ -1392,12 +2227,27 @@ mod tests {
         let file = dir.path().join("missing.txt");
         fs::write(&file, "content").unwrap();
 
-        let mut iter = SearchResultIterator::new(vec![(file.clone(), vec![])]);
+        let mut iter =
+            SearchResultIterator::new(vec![raw_item(file.clone(), vec![])], empty_stats(), vec![]);
+        if let Some(raw) = iter.inner.as_mut_slice().first_mut() {
+            raw.snapshot = Some(FileSnapshot {
+                len: 7,
+                modified_unix_millis: Some(0),
+                ..Default::default()
+            });
+        }
         fs::remove_file(&file).unwrap();
 
-        let err = iter.next().unwrap().unwrap_err().to_string();
-        assert!(err.contains("no longer exists"));
-        assert!(err.contains("missing.txt"));
+        let err = iter.next().unwrap().unwrap_err();
+        let materialization = err
+            .downcast_ref::<SearchMaterializationError>()
+            .expect("iterator errors should carry typed materialization context");
+        assert_eq!(
+            materialization.kind,
+            SearchMaterializationFailureKind::ContentReadFailed
+        );
+        assert!(materialization.snapshot_drift);
+        assert!(materialization.message.contains("missing.txt"));
     }
 
     #[test]
@@ -1408,34 +2258,58 @@ mod tests {
         let permissions = fs::metadata(&file).unwrap().permissions();
         fs::set_permissions(&file, PermissionsExt::from_mode(0o000)).unwrap();
 
-        let mut iter = SearchResultIterator::new(vec![(file.clone(), vec![])]);
+        let mut iter =
+            SearchResultIterator::new(vec![raw_item(file.clone(), vec![])], empty_stats(), vec![]);
         let err = iter.next().unwrap().unwrap_err().to_string();
-        assert!(err.contains("Permission denied reading"));
+        assert!(err.contains("restricted.txt"));
+        assert!(
+            err.contains("Permission denied")
+                || err.contains("Operation not permitted")
+                || err.contains("Failed to read file")
+        );
 
         fs::set_permissions(&file, permissions).unwrap();
     }
 
     #[test]
-    fn test_iterator_binary_file_error() {
+    fn test_iterator_binary_file_skips_content() {
         let dir = tempdir().unwrap();
         let file = dir.path().join("binary.bin");
         fs::write(&file, b"\x00\x01\x02binary").unwrap();
 
-        let mut iter = SearchResultIterator::new(vec![(file.clone(), vec![])]);
-        let err = iter.next().unwrap().unwrap_err().to_string();
-        assert!(err.contains("binary file"));
+        let mut iter =
+            SearchResultIterator::new(vec![raw_item(file.clone(), vec![])], empty_stats(), vec![]);
+        let result = iter.next().unwrap().unwrap();
+
+        assert_eq!(
+            result.content_state,
+            ContentState::Skipped {
+                reason: ContentSkipReason::Binary
+            }
+        );
+        assert!(result.content.is_empty());
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diag| diag.message.to_lowercase().contains("binary")));
     }
 
     #[test]
-    fn test_iterator_invalid_utf8_error() {
+    fn test_iterator_invalid_utf8_is_lossy() {
         let dir = tempdir().unwrap();
         let file = dir.path().join("invalid.txt");
         fs::write(&file, vec![0xff, 0xfe]).unwrap();
 
-        let mut iter = SearchResultIterator::new(vec![(file.clone(), vec![])]);
-        let err = iter.next().unwrap().unwrap_err().to_string();
-        assert!(err.contains("Invalid UTF-8"));
-        assert!(err.contains("invalid.txt"));
+        let mut iter =
+            SearchResultIterator::new(vec![raw_item(file.clone(), vec![])], empty_stats(), vec![]);
+        let result = iter.next().unwrap().unwrap();
+
+        assert_eq!(result.content_state, ContentState::LoadedLossy);
+        assert!(result.content.contains('\u{FFFD}'));
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diag| diag.kind == crate::content::DiagnosticKind::ContentDecodedLossy));
     }
 
     #[test]
@@ -1451,7 +2325,8 @@ mod tests {
             end_point: tree_sitter::Point::new(0, 9),
         }];
 
-        let mut iter = SearchResultIterator::new(vec![(file, ranges)]);
+        let mut iter =
+            SearchResultIterator::new(vec![raw_item(file, ranges)], empty_stats(), vec![]);
         let result = iter.next().unwrap().unwrap();
 
         assert_eq!(result.matches.len(), 1);
@@ -1467,8 +2342,14 @@ mod tests {
         let missing = dir.path().join("missing.txt");
         fs::write(&existing, "ok").unwrap();
 
-        let mut iter =
-            SearchResultIterator::new(vec![(missing.clone(), vec![]), (existing.clone(), vec![])]);
+        let mut iter = SearchResultIterator::new(
+            vec![
+                raw_item(missing.clone(), vec![]),
+                raw_item(existing.clone(), vec![]),
+            ],
+            empty_stats(),
+            vec![],
+        );
         let first = iter.next().unwrap();
         let second = iter.next().unwrap();
 

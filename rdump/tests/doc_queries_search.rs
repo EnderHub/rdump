@@ -1,6 +1,7 @@
 use anyhow::Result;
 use filetime::{set_file_times, FileTime};
-use rdump::{commands::search::perform_search, ColorChoice, Format, SearchArgs};
+use rdump::commands::search::search_request_from_args;
+use rdump::{execute_search_request, ColorChoice, Format, SearchArgs};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,18 +22,11 @@ fn build_args(root: &PathBuf, query: &str) -> SearchArgs {
     SearchArgs {
         query: Some(query.to_string()),
         root: root.clone(),
-        preset: vec![],
-        output: None,
-        dialect: None,
-        line_numbers: false,
-        no_headers: false,
         format: Format::Paths,
         no_ignore: true,
         hidden: true,
         color: ColorChoice::Never,
-        max_depth: None,
-        context: None,
-        find: false,
+        ..Default::default()
     }
 }
 
@@ -95,7 +89,8 @@ fn doc_queries_have_real_matches() -> Result<()> {
 
     for query in queries {
         if expected_error.contains(query.as_str()) {
-            if perform_search(&build_args(&root, &query)).is_ok() {
+            let request = search_request_from_args(&build_args(&root, &query));
+            if execute_search_request(&request).is_ok() {
                 failures.push(format!(
                     "Expected error for query '{}', but it succeeded",
                     query
@@ -104,7 +99,8 @@ fn doc_queries_have_real_matches() -> Result<()> {
             continue;
         }
 
-        match perform_search(&build_args(&root, &query)) {
+        let request = search_request_from_args(&build_args(&root, &query));
+        match execute_search_request(&request) {
             Ok(_) => {}
             Err(err) => failures.push(format!("Query '{}' failed: {}", query, err)),
         }

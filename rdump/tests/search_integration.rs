@@ -1,5 +1,9 @@
 use anyhow::Result;
-use rdump::{commands::search::run_search, ColorChoice, Format, SearchArgs};
+use rdump::commands::search::search_request_from_args;
+use rdump::contracts::SearchItem;
+use rdump::{
+    commands::search::run_search, execute_search_request, ColorChoice, Format, SearchArgs,
+};
 use std::fs;
 use std::path::Path;
 use tempfile::tempdir;
@@ -10,41 +14,34 @@ fn create_test_args(root: &Path, query: &str) -> SearchArgs {
     SearchArgs {
         query: Some(query.to_string()), // The query is a single string
         root: root.to_path_buf(),
-        preset: vec![],
-        output: None,
-        dialect: None,
-        line_numbers: false,
-        no_headers: false,
         format: Format::Paths,
         no_ignore: true, // Crucial for hermetic tests
         hidden: true,    // Crucial for hermetic tests
         color: ColorChoice::Never,
-        max_depth: None,
-        context: None,
-        find: false,
+        ..Default::default()
     }
 }
 
 /// Helper to run a search and return the relative paths of matching files.
-/// NOTE: This now uses `run_search` and captures stdout, as `perform_search` is not public.
-/// To make perform_search public, we'd need to adjust the `lib.rs` design.
-/// For these tests, we will create a custom test helper that calls the full `run_search`
-/// and returns the result, which is more of a true integration test.
-///
-/// Let's stick with the previous `perform_search` for simplicity and make it public.
-/// The `lib.rs` change makes this possible. Let's re-import it.
-use rdump::commands::search::perform_search;
-
 fn run_test_search(root: &Path, query: &str) -> Result<Vec<String>> {
-    let args = create_test_args(root, query);
-    let results = perform_search(&args)?;
-    let mut paths: Vec<String> = results
+    let request = search_request_from_args(&create_test_args(root, query));
+    let response = execute_search_request(&request)?;
+    let mut paths: Vec<String> = response
+        .results
         .into_iter()
-        .map(|(p, _)| {
-            p.strip_prefix(root)
-                .unwrap()
-                .to_string_lossy()
-                .replace('\\', "/") // Normalize for Windows
+        .map(|item| {
+            let raw_path = match item {
+                SearchItem::Path { path, .. }
+                | SearchItem::Summary { path, .. }
+                | SearchItem::Matches { path, .. }
+                | SearchItem::Snippets { path, .. }
+                | SearchItem::Full { path, .. } => path,
+            };
+            let normalized = Path::new(&raw_path)
+                .strip_prefix(root)
+                .map(|path| path.to_path_buf())
+                .unwrap_or_else(|_| Path::new(raw_path.trim_start_matches("./")).to_path_buf());
+            normalized.to_string_lossy().replace('\\', "/")
         })
         .collect();
     paths.sort();

@@ -1,0 +1,11 @@
+[package]
+name = "rdump-contracts"
+version = "0.1.0"
+edition = "2021"
+description = "Shared contracts for rdump CLI, SDK, and MCP surfaces"
+license = "MIT"
+repository = "https://github.com/almaclaine/rdump"
+
+[dependencies]
+schemars = "1.2"
+serde = { version = "1.0", features = ["derive"] }

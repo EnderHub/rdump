@@ -1,5 +1,8 @@
 use rayon::prelude::*;
-use rdump::{search, search_iter, Match, SearchOptions, SearchResult, SearchResultIterator};
+use rdump::{
+    search, search_iter, Match, SearchOptions, SearchResult, SearchResultIterator,
+    SearchResultMetadata,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
@@ -38,6 +41,7 @@ fn search_options_moves_between_threads() {
         hidden: false,
         max_depth: Some(5),
         sql_dialect: None,
+        ..Default::default()
     };
 
     let handle = thread::spawn(move || {
@@ -63,6 +67,9 @@ fn search_result_moves_between_threads() {
             text: "fn main()".to_string(),
         }],
         content: "fn main() {}".to_string(),
+        content_state: rdump::ContentState::Loaded,
+        diagnostics: vec![],
+        metadata: SearchResultMetadata::default(),
     };
 
     let handle = thread::spawn(move || {
@@ -81,6 +88,9 @@ fn search_result_shared_via_arc() {
         path: PathBuf::from("shared.rs"),
         matches: vec![],
         content: "// shared content".to_string(),
+        content_state: rdump::ContentState::Loaded,
+        diagnostics: vec![],
+        metadata: SearchResultMetadata::default(),
     });
 
     let mut handles = vec![];

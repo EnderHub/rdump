@@ -1,21 +1,19 @@
 use crate::types::{LanguageInfo, LanguagePredicates};
-use rdump::predicates::code_aware::profiles::{list_language_profiles, LanguageProfile};
+use rdump::predicates::code_aware::profiles::{
+    find_canonical_language_profile, list_canonical_language_profiles, CanonicalLanguageProfile,
+};
 use turbomcp::prelude::{McpError, McpResult};
 
 pub fn list_languages() -> Vec<LanguageInfo> {
-    list_language_profiles()
+    list_canonical_language_profiles()
         .into_iter()
         .map(language_info_from_profile)
         .collect()
 }
 
 pub fn describe_language(language: &str) -> McpResult<LanguageInfo> {
-    let lang_lower = language.to_lowercase();
-    let profiles = list_language_profiles();
-    let profile = profiles
-        .into_iter()
-        .find(|p| p.name.to_lowercase() == lang_lower || p.extensions.contains(&lang_lower.as_str()))
-        .ok_or_else(|| McpError::Tool(format!("Language '{language}' not supported.")))?;
+    let profile = find_canonical_language_profile(language)
+        .ok_or_else(|| McpError::invalid_params(format!("Language '{language}' not supported.")))?;
 
     Ok(language_info_from_profile(profile))
 }
@@ -30,7 +28,12 @@ pub fn format_language_list_text(languages: &[LanguageInfo]) -> String {
         } else {
             lang.extensions.join(", ")
         };
-        lines.push(format!("- {} ({})", lang.name, ext_list));
+        let caveat_suffix = if lang.semantic_caveats.is_empty() {
+            String::new()
+        } else {
+            format!(" caveats={}", lang.semantic_caveats.len())
+        };
+        lines.push(format!("- {} ({}){}", lang.name, ext_list, caveat_suffix));
     }
 
     if languages.len() > 20 {
@@ -42,11 +45,15 @@ pub fn format_language_list_text(languages: &[LanguageInfo]) -> String {
 
 pub fn format_language_text(info: &LanguageInfo) -> String {
     let mut lines = Vec::new();
+    lines.push(format!("Id: {}", info.id));
     lines.push(format!("Language: {}", info.name));
     if info.extensions.is_empty() {
         lines.push("Extensions: none".to_string());
     } else {
         lines.push(format!("Extensions: {}", info.extensions.join(", ")));
+    }
+    if !info.aliases.is_empty() {
+        lines.push(format!("Aliases: {}", info.aliases.join(", ")));
     }
     lines.push(format!(
         "Predicates: metadata {}, content {}, semantic {}",
@@ -54,10 +61,16 @@ pub fn format_language_text(info: &LanguageInfo) -> String {
         info.predicates.content.len(),
         info.predicates.semantic.len()
     ));
+    if !info.semantic_caveats.is_empty() {
+        lines.push("Caveats:".to_string());
+        for caveat in &info.semantic_caveats {
+            lines.push(format!("- {caveat}"));
+        }
+    }
     lines.join("\n")
 }
 
-fn language_info_from_profile(profile: &LanguageProfile) -> LanguageInfo {
+fn language_info_from_profile(profile: CanonicalLanguageProfile) -> LanguageInfo {
     let metadata = vec!["ext", "name", "path", "in", "size", "modified"]
         .into_iter()
         .map(String::from)
@@ -69,6 +82,7 @@ fn language_info_from_profile(profile: &LanguageProfile) -> LanguageInfo {
         .collect();
 
     let mut semantic: Vec<String> = profile
+        .profile
         .queries
         .keys()
         .map(|k| k.as_ref().to_string())
@@ -76,13 +90,31 @@ fn language_info_from_profile(profile: &LanguageProfile) -> LanguageInfo {
     semantic.sort();
 
     LanguageInfo {
-        name: profile.name.to_string(),
-        extensions: profile.extensions.iter().map(|ext| ext.to_string()).collect(),
+        id: profile.id.to_string(),
+        name: profile.profile.name.to_string(),
+        extensions: profile
+            .profile
+            .extensions
+            .iter()
+            .map(|ext| ext.to_string())
+            .collect(),
+        aliases: profile
+            .aliases
+            .iter()
+            .map(|alias| alias.to_string())
+            .collect(),
+        support_tier: rdump::predicates::code_aware::profiles::support_tier_for_id(profile.id),
         predicates: LanguagePredicates {
             metadata,
             content,
             semantic,
         },
+        semantic_caveats: rdump::predicates::code_aware::profiles::semantic_caveats_for_id(
+            profile.id,
+        )
+        .into_iter()
+        .map(str::to_string)
+        .collect(),
     }
 }
 
@@ -125,5 +157,39 @@ mod tests {
         let info = describe_language("rs").unwrap();
         let text = format_language_text(&info);
         assert!(text.contains("Extensions:"));
+    }
+
+    #[test]
+    fn list_languages_is_deduplicated_and_sorted() {
+        let languages = list_languages();
+        let mut ids: Vec<_> = languages
+            .iter()
+            .map(|language| language.id.clone())
+            .collect();
+        let mut sorted = ids.clone();
+        sorted.sort_by(|left, right| {
+            let left_name = languages
+                .iter()
+                .find(|language| language.id == *left)
+                .map(|language| language.name.clone())
+                .unwrap();
+            let right_name = languages
+                .iter()
+                .find(|language| language.id == *right)
+                .map(|language| language.name.clone())
+                .unwrap();
+            left_name.cmp(&right_name).then(left.cmp(right))
+        });
+        ids.sort();
+        ids.dedup();
+
+        assert_eq!(ids.len(), languages.len());
+        assert_eq!(
+            sorted,
+            languages
+                .iter()
+                .map(|language| language.id.clone())
+                .collect::<Vec<_>>()
+        );
     }
 }

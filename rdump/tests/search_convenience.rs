@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use rdump::{search, SearchOptions};
+use rdump::{search, search_path_iter, search_paths, search_with_stats, SearchOptions};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -200,4 +200,53 @@ fn test_search_empty_query_with_preset() {
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].path.file_name().unwrap(), "main.rs");
+}
+
+#[test]
+fn test_search_with_stats_reports_engine_counts() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("main.rs"), "fn main() {}").unwrap();
+    fs::write(dir.path().join("lib.rs"), "fn helper() {}").unwrap();
+
+    let report = search_with_stats(
+        "ext:rs",
+        SearchOptions {
+            root: dir.path().to_path_buf(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(report.results.len(), 2);
+    assert_eq!(report.stats.matched_files, 2);
+    assert!(report.stats.candidate_files >= 2);
+}
+
+#[test]
+fn test_search_paths_skips_content_materialization() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("main.rs"), "fn main() {}").unwrap();
+
+    let paths = search_paths(
+        "ext:rs",
+        SearchOptions {
+            root: dir.path().to_path_buf(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(paths.len(), 1);
+    assert!(paths[0].ends_with("main.rs"));
+
+    let iter = search_path_iter(
+        "ext:rs",
+        SearchOptions {
+            root: dir.path().to_path_buf(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(iter.remaining(), 1);
+    assert_eq!(iter.stats().matched_files, 1);
 }

@@ -79,7 +79,9 @@ const AWS_SECRET_ACCESS_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
         .arg("ext:rs")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Skipping possible secret"));
+        .stdout(predicate::str::contains(
+            "[content unavailable: secret_like]",
+        ));
 }
 
 #[test]
@@ -98,7 +100,9 @@ const TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3OD
         .arg("ext:rs")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Skipping possible secret"));
+        .stdout(predicate::str::contains(
+            "[content unavailable: secret_like]",
+        ));
 }
 
 // =============================================================================

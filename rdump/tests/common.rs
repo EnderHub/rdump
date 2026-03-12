@@ -1,9 +1,17 @@
 #![allow(dead_code)] // allow dead code for this common helper module
 
+use predicates::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 use tempfile::TempDir;
+
+pub struct CliSearchCase<'a> {
+    pub fixture: &'a str,
+    pub query: &'a str,
+    pub expected: &'a [&'a str],
+    pub absent: &'a [&'a str],
+}
 
 /// Get the path to the fixtures directory
 fn fixtures_dir() -> PathBuf {
@@ -48,7 +56,11 @@ pub fn setup_fixture(fixture_name: &str) -> TempDir {
     let fixture_path = fixtures_dir().join(fixture_name);
 
     if !fixture_path.exists() {
-        panic!("Fixture '{}' not found at {:?}", fixture_name, fixture_path);
+        let manifest = fixtures_dir().join("MANIFEST.md");
+        panic!(
+            "Fixture '{}' not found at {:?}. See {:?} for the fixture capability map.",
+            fixture_name, fixture_path, manifest
+        );
     }
 
     copy_dir_recursive(&fixture_path, dir.path()).unwrap();
@@ -112,4 +124,38 @@ pub fn setup_custom_project(files: &[(&str, &str)]) -> TempDir {
     }
 
     dir
+}
+
+pub fn assert_cli_search_case(case: &CliSearchCase<'_>) {
+    let dir = setup_fixture(case.fixture);
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    cmd.current_dir(dir.path()).arg("search").arg(case.query);
+
+    let mut assertion = cmd.assert();
+    assertion = assertion.success();
+
+    for needle in case.expected {
+        assertion = assertion.stdout(predicates::str::contains(*needle));
+    }
+
+    for needle in case.absent {
+        assertion = assertion.stdout(predicates::str::contains(*needle).not());
+    }
+}
+
+pub fn assert_cli_search_matrix(cases: &[CliSearchCase<'_>]) {
+    for case in cases {
+        assert_cli_search_case(case);
+    }
+}
+
+pub fn assert_public_support_matrix(cases: &[rdump::support_matrix::SupportMatrixCase]) {
+    for case in cases {
+        assert_cli_search_case(&CliSearchCase {
+            fixture: case.fixture,
+            query: case.query,
+            expected: case.expected,
+            absent: case.absent,
+        });
+    }
 }

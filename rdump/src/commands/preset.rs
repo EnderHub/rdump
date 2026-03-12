@@ -1,20 +1,36 @@
-use crate::config::{self, Config};
+use crate::config::{self, Config, PresetDefinition};
 use crate::PresetAction;
 use anyhow::{anyhow, Result};
-use std::fs; // We'll need to make PresetAction public
+use std::fs;
 
-/// The main entry point for the `preset` command.
 pub fn run_preset(action: PresetAction) -> Result<()> {
     match action {
         PresetAction::List => {
-            let config = config::load_config()?;
-            if config.presets.is_empty() {
+            let report = config::load_config_report()?;
+            if report.resolved_presets.is_empty() {
                 println!("No presets found.");
             } else {
                 println!("Available presets:");
-                let max_len = config.presets.keys().map(|k| k.len()).max().unwrap_or(0);
-                for (name, query) in config.presets {
-                    println!("  {name:<max_len$} : {query}");
+                let max_len = report
+                    .resolved_presets
+                    .keys()
+                    .map(|key| key.len())
+                    .max()
+                    .unwrap_or(0);
+                for (name, preset) in report.resolved_presets {
+                    println!("  {name:<max_len$} : {}", preset.query);
+                    if let Some(description) = preset.description {
+                        println!("    description: {description}");
+                    }
+                    if !preset.tags.is_empty() {
+                        println!("    tags: {}", preset.tags.join(", "));
+                    }
+                    if !preset.examples.is_empty() {
+                        println!("    examples: {}", preset.examples.join(" | "));
+                    }
+                    if !preset.includes.is_empty() {
+                        println!("    includes: {}", preset.includes.join(", "));
+                    }
                 }
             }
         }
@@ -30,7 +46,7 @@ pub fn run_preset(action: PresetAction) -> Result<()> {
             };
 
             println!("Adding/updating preset '{name}'...");
-            config.presets.insert(name, query);
+            config.presets.insert(name, PresetDefinition::Query(query));
             config::save_config(&config)?;
         }
         PresetAction::Remove { name } => {

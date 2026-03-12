@@ -6,6 +6,7 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,14 +18,54 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Regenerate generated docs
+        run: ./scripts/regenerate-generated-docs.sh
+      - name: Verify generated docs are committed
+        run: git diff --exit-code -- docs/generated
       - name: Run tests
         run: |
           cargo test --manifest-path rdump/Cargo.toml
+          cargo test --manifest-path rdump/Cargo.toml --features async
           cargo test --manifest-path rdump-mcp/Cargo.toml
+
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binaries
+        run: |
+          cargo build --release --manifest-path rdump/Cargo.toml
+          cargo build --release --manifest-path rdump-mcp/Cargo.toml
+      - name: Smoke-check release binaries
+        run: |
+          ./rdump/target/release/rdump --help
+          ./rdump/target/release/rdump search --help
+          ./rdump-mcp/target/release/rdump-mcp --help
+
+  perf-review:
+    name: perf-review
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      RDUMP_PERF_METADATA_MAX_MS: "1500"
+      RDUMP_PERF_SEMANTIC_MAX_MS: "2500"
+      RDUMP_PERF_MIXED_MAX_MS: "3000"
+      RDUMP_PERF_PATH_MAX_MS: "1200"
+      RDUMP_PERF_HIGHLIGHT_WARM_MAX_MS: "500"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run ignored performance harnesses
+        run: |
+          cargo test --manifest-path rdump/Cargo.toml --test perf_smoke -- --ignored
+          cargo test --manifest-path rdump/Cargo.toml --test highlight_perf -- --ignored
 
   publish:
     name: publish
-    needs: test
+    needs: [test, smoke]
     if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
@@ -52,6 +93,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Regenerate generated docs
+        if: matrix.os == 'ubuntu-latest'
+        run: ./scripts/regenerate-generated-docs.sh
+      - name: Verify generated docs are committed
+        if: matrix.os == 'ubuntu-latest'
+        run: git diff --exit-code -- docs/generated
       - name: Build release binaries
         run: |
           cargo build --release --target ${{ matrix.target }} --manifest-path rdump/Cargo.toml

@@ -1,8 +1,8 @@
 # rdump Architecture Document
 
-**Version:** 3.1
+**Version:** 3.2
 **Status:** Complete
-**Last Updated:** 2025-11-20
+**Last Updated:** 2026-03-11
 
 ---
 
@@ -119,6 +119,30 @@ graph TB
 6. **Cost-Ordered Evaluation** - Cheapest predicates first
 7. **Data-Driven Profiles** - Language support via profile structs
 8. **Parallel Iterators** - rayon for multi-core processing
+
+### Current Interface Snapshot
+
+The architecture above remains directionally correct, but the current public
+surface has grown beyond the original CLI-only framing:
+
+- Library search APIs: `search_iter`, `search`, `search_with_stats`,
+  `search_path_iter`, `search_paths`, and `explain_query`
+- Unified content policy: `ContentState` and `SearchDiagnostic` now describe
+  whether content was loaded, lossy-decoded, or intentionally skipped
+- Path-only search is a first-class flow for machine consumers that do not need
+  file contents
+- The MCP server exposes search, validation, explain, language, and reference
+  tools plus `rdump://docs/...` resources
+
+Operationally, the engine now does:
+
+1. Resolve presets into an effective query.
+2. Parse and validate the query before filesystem walking.
+3. Discover candidate files with canonical-path deduplication and no symlink
+   following by default.
+4. Run metadata prefiltering before content and semantic evaluation.
+5. Materialize either full `SearchResult` values or path-only output, depending
+   on the caller.
 
 ---
 

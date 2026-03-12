@@ -23,7 +23,10 @@ pub fn resolve_limits(limits: Option<Limits>) -> ResolvedLimits {
     let limits = limits.unwrap_or_default();
     ResolvedLimits {
         max_results: resolve_limit(limits.max_results, DEFAULT_MAX_RESULTS),
-        max_matches_per_file: resolve_limit(limits.max_matches_per_file, DEFAULT_MAX_MATCHES_PER_FILE),
+        max_matches_per_file: resolve_limit(
+            limits.max_matches_per_file,
+            DEFAULT_MAX_MATCHES_PER_FILE,
+        ),
         max_bytes_per_file: resolve_limit(limits.max_bytes_per_file, DEFAULT_MAX_BYTES_PER_FILE),
         max_total_bytes: resolve_limit(limits.max_total_bytes, DEFAULT_MAX_TOTAL_BYTES),
         max_match_bytes: resolve_limit(limits.max_match_bytes, DEFAULT_MAX_MATCH_BYTES),

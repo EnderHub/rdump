@@ -1,12 +1,13 @@
 use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
-use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tree_sitter::{Parser, Range, Tree};
 
-use crate::limits::{is_probably_binary, maybe_contains_secret, MAX_FILE_SIZE};
+use crate::content::{load_search_content, ContentState, LoadedContent, SearchDiagnostic};
 use crate::parser::{AstNode, LogicalOperator, PredicateKey};
 use crate::predicates::PredicateEvaluator;
+use crate::SemanticSkipReason;
 
 /// The result of an evaluation for a single file.
 #[derive(Debug, Clone)]
@@ -22,15 +23,15 @@ pub enum MatchResult {
 pub struct FileContext {
     pub path: PathBuf,
     pub root: PathBuf,
-    content: Option<String>,
-    /// Tracks whether the file was skipped due to size/binary detection.
-    _skipped_content: bool,
+    content: Option<LoadedContent>,
     // Cache for the parsed tree-sitter AST
     tree: Option<Tree>,
     /// Language key for the cached tree (used to reparse when dialect changes).
     tree_language_key: Option<String>,
     /// Cached SQL dialect/profile key chosen for this file.
     sql_profile_key: Option<String>,
+    diagnostics: Vec<SearchDiagnostic>,
+    semantic_skip_reasons: Vec<SemanticSkipReason>,
 }
 
 impl FileContext {
@@ -41,53 +42,40 @@ impl FileContext {
             path: canonical_path,
             root: canonical_root,
             content: None,
-            _skipped_content: false,
             tree: None,
             tree_language_key: None,
             sql_profile_key: None,
+            diagnostics: Vec::new(),
+            semantic_skip_reasons: Vec::new(),
         }
     }
 
     pub fn get_content(&mut self) -> Result<&str> {
         if self.content.is_none() {
-            let metadata = fs::metadata(&self.path)
-                .with_context(|| format!("Failed to stat file {}", self.path.display()))?;
-
-            if metadata.len() > MAX_FILE_SIZE {
-                eprintln!(
-                    "Skipping {} (exceeds max file size of {} bytes)",
-                    self.path.display(),
-                    MAX_FILE_SIZE
-                );
-                self._skipped_content = true;
-                self.content = Some(String::new());
-                return Ok(self.content.as_ref().unwrap());
-            }
-
-            let bytes = fs::read(&self.path)
-                .with_context(|| format!("Failed to read file {}", self.path.display()))?;
-
-            if is_probably_binary(&bytes) {
-                eprintln!("Skipping binary file {}", self.path.display());
-                self._skipped_content = true;
-                self.content = Some(String::new());
-                return Ok(self.content.as_ref().unwrap());
-            }
-
-            let content = String::from_utf8_lossy(&bytes).into_owned();
-
-            if maybe_contains_secret(&content) {
-                eprintln!(
-                    "Skipping possible secret-containing file {}",
-                    self.path.display()
-                );
-                self._skipped_content = true;
-                self.content = Some(String::new());
-                return Ok(self.content.as_ref().unwrap());
-            }
-            self.content = Some(content);
+            self.content = Some(load_search_content(&self.path)?);
         }
-        Ok(self.content.as_ref().unwrap())
+        Ok(self.content.as_ref().unwrap().content.as_ref())
+    }
+
+    pub fn get_content_arc(&mut self) -> Result<Arc<str>> {
+        if self.content.is_none() {
+            self.content = Some(load_search_content(&self.path)?);
+        }
+        Ok(self.content.as_ref().unwrap().content.clone())
+    }
+
+    pub fn content_state(&mut self) -> Result<ContentState> {
+        if self.content.is_none() {
+            self.content = Some(load_search_content(&self.path)?);
+        }
+        Ok(self.content.as_ref().unwrap().state.clone())
+    }
+
+    pub fn content_diagnostics(&mut self) -> Result<Vec<SearchDiagnostic>> {
+        if self.content.is_none() {
+            self.content = Some(load_search_content(&self.path)?);
+        }
+        Ok(self.content.as_ref().unwrap().diagnostics.clone())
     }
 
     // Lazily parses the file with tree-sitter and caches the result.
@@ -112,6 +100,10 @@ impl FileContext {
         Ok(self.tree.as_ref().unwrap())
     }
 
+    pub fn has_tree_for(&self, language_key: &str) -> bool {
+        self.tree.is_some() && self.tree_language_key.as_deref() == Some(language_key)
+    }
+
     /// Returns the cached SQL profile key, if any.
     pub fn sql_profile_key(&self) -> Option<&str> {
         self.sql_profile_key.as_deref()
@@ -120,6 +112,24 @@ impl FileContext {
     /// Stores the SQL profile key chosen for this file.
     pub fn set_sql_profile_key(&mut self, key: &str) {
         self.sql_profile_key = Some(key.to_string());
+    }
+
+    pub fn push_diagnostic(&mut self, diagnostic: SearchDiagnostic) {
+        self.diagnostics.push(diagnostic);
+    }
+
+    pub fn push_semantic_skip(&mut self, reason: SemanticSkipReason, message: impl Into<String>) {
+        self.semantic_skip_reasons.push(reason);
+        self.diagnostics
+            .push(SearchDiagnostic::semantic_skip(self.path.clone(), message));
+    }
+
+    pub fn take_diagnostics(&mut self) -> Vec<SearchDiagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+
+    pub fn take_semantic_skip_reasons(&mut self) -> Vec<SemanticSkipReason> {
+        std::mem::take(&mut self.semantic_skip_reasons)
     }
 }
 
@@ -557,7 +567,7 @@ mod tests {
         let content = context.get_content().unwrap();
         // Binary files return empty content
         assert_eq!(content, "");
-        assert!(context._skipped_content);
+        assert!(!context.content_state().unwrap().is_loaded());
     }
 
     #[test]
@@ -570,7 +580,7 @@ mod tests {
         let content = context.get_content().unwrap();
         // Secret files return empty content
         assert_eq!(content, "");
-        assert!(context._skipped_content);
+        assert!(!context.content_state().unwrap().is_loaded());
     }
 
     #[test]

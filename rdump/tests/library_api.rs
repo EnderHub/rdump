@@ -922,8 +922,18 @@ fn test_binary_file_detection() -> Result<()> {
     )?;
 
     let first = iter.next().expect("expected an item");
-    let err = first.unwrap_err().to_string();
-    assert!(err.to_lowercase().contains("binary"));
+    let result = first?;
+    assert_eq!(
+        result.content_state,
+        rdump::ContentState::Skipped {
+            reason: rdump::ContentSkipReason::Binary
+        }
+    );
+    assert!(result.content.is_empty());
+    assert!(result
+        .diagnostics
+        .iter()
+        .any(|diag| diag.message.to_lowercase().contains("binary")));
     Ok(())
 }
 
