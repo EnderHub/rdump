@@ -122,13 +122,51 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        shell: bash
         run: |
-          cargo publish -p rdump --locked
-          for attempt in 1 2 3 4 5; do
-            cargo publish -p rdump-mcp --locked && break
-            echo "rdump-mcp publish failed; retrying in 20s..."
-            sleep 20
-          done
+          set -euo pipefail
+
+          crate_version() {
+            local manifest="$1"
+            grep '^version = ' "$manifest" | head -n1 | sed -E 's/version = "([^"]+)"/\1/'
+          }
+
+          crate_published() {
+            local crate="$1"
+            local version="$2"
+            curl -fsS "https://crates.io/api/v1/crates/${crate}/${version}" >/dev/null 2>&1
+          }
+
+          publish_with_retry() {
+            local crate="$1"
+            local version="$2"
+            local attempts=10
+
+            if crate_published "$crate" "$version"; then
+              echo "${crate} ${version} is already published; skipping."
+              return 0
+            fi
+
+            for attempt in $(seq 1 "$attempts"); do
+              if cargo publish -p "$crate" --locked; then
+                echo "Published ${crate} ${version}."
+                return 0
+              fi
+              echo "${crate} publish attempt ${attempt}/${attempts} failed; retrying in 20s..."
+              sleep 20
+            done
+
+            echo "Failed to publish ${crate} ${version} after ${attempts} attempts."
+            return 1
+          }
+
+          RDUMP_CONTRACTS_VERSION=$(crate_version crates/rdump-contracts/Cargo.toml)
+          RDUMP_VERSION=$(crate_version crates/rdump/Cargo.toml)
+          RDUMP_MCP_VERSION=$(crate_version crates/rdump-mcp/Cargo.toml)
+
+          publish_with_retry rdump-contracts "$RDUMP_CONTRACTS_VERSION"
+          publish_with_retry rdump "$RDUMP_VERSION"
+          publish_with_retry rdump-mcp "$RDUMP_MCP_VERSION"
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
