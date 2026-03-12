@@ -24,9 +24,8 @@ jobs:
         run: git diff --exit-code -- docs/generated
       - name: Run tests
         run: |
-          cargo test --manifest-path rdump/Cargo.toml
-          cargo test --manifest-path rdump/Cargo.toml --features async
-          cargo test --manifest-path rdump-mcp/Cargo.toml
+          cargo test --workspace
+          cargo test -p rdump --features async
 
   smoke:
     name: smoke
@@ -37,13 +36,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Build release binaries
         run: |
-          cargo build --release --manifest-path rdump/Cargo.toml
-          cargo build --release --manifest-path rdump-mcp/Cargo.toml
+          cargo build --release -p rdump -p rdump-mcp
       - name: Smoke-check release binaries
         run: |
-          ./rdump/target/release/rdump --help
-          ./rdump/target/release/rdump search --help
-          ./rdump-mcp/target/release/rdump-mcp --help
+          ./target/release/rdump --help
+          ./target/release/rdump search --help
+          ./target/release/rdump-mcp --help
 
   perf-review:
     name: perf-review
@@ -60,8 +58,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Run ignored performance harnesses
         run: |
-          cargo test --manifest-path rdump/Cargo.toml --test perf_smoke -- --ignored
-          cargo test --manifest-path rdump/Cargo.toml --test highlight_perf -- --ignored
+          cargo test -p rdump --test perf_smoke -- --ignored
+          cargo test -p rdump --test highlight_perf -- --ignored
 
   publish:
     name: publish
@@ -101,15 +99,14 @@ jobs:
         run: git diff --exit-code -- docs/generated
       - name: Build release binaries
         run: |
-          cargo build --release --target ${{ matrix.target }} --manifest-path rdump/Cargo.toml
-          cargo build --release --target ${{ matrix.target }} --manifest-path rdump-mcp/Cargo.toml
+          cargo build --release --target ${{ matrix.target }} -p rdump -p rdump-mcp
       - name: Package release (unix)
         if: matrix.archive_ext == 'tar.gz'
         shell: bash
         run: |
           mkdir -p dist
-          cp rdump/target/${{ matrix.target }}/release/rdump${{ matrix.bin_ext }} dist/rdump${{ matrix.bin_ext }}
-          cp rdump-mcp/target/${{ matrix.target }}/release/rdump-mcp${{ matrix.bin_ext }} dist/rdump-mcp${{ matrix.bin_ext }}
+          cp target/${{ matrix.target }}/release/rdump${{ matrix.bin_ext }} dist/rdump${{ matrix.bin_ext }}
+          cp target/${{ matrix.target }}/release/rdump-mcp${{ matrix.bin_ext }} dist/rdump-mcp${{ matrix.bin_ext }}
           tar -czf dist/rdump-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }} -C dist rdump${{ matrix.bin_ext }}
           tar -czf dist/rdump-mcp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }} -C dist rdump-mcp${{ matrix.bin_ext }}
       - name: Package release (windows)
@@ -117,8 +114,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp rdump/target/${{ matrix.target }}/release/rdump${{ matrix.bin_ext }} dist/rdump${{ matrix.bin_ext }}
-          cp rdump-mcp/target/${{ matrix.target }}/release/rdump-mcp${{ matrix.bin_ext }} dist/rdump-mcp${{ matrix.bin_ext }}
+          cp target/${{ matrix.target }}/release/rdump${{ matrix.bin_ext }} dist/rdump${{ matrix.bin_ext }}
+          cp target/${{ matrix.target }}/release/rdump-mcp${{ matrix.bin_ext }} dist/rdump-mcp${{ matrix.bin_ext }}
           7z a dist/rdump-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }} ./dist/rdump${{ matrix.bin_ext }}
           7z a dist/rdump-mcp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }} ./dist/rdump-mcp${{ matrix.bin_ext }}
       - name: Publish to crates.io
@@ -126,9 +123,9 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          cargo publish --manifest-path rdump/Cargo.toml --locked
+          cargo publish -p rdump --locked
           for attempt in 1 2 3 4 5; do
-            cargo publish --manifest-path rdump-mcp/Cargo.toml --locked && break
+            cargo publish -p rdump-mcp --locked && break
             echo "rdump-mcp publish failed; retrying in 20s..."
             sleep 20
           done

@@ -2,8 +2,8 @@
 set -eo pipefail
 
 # --- Configuration ---
-CARGO_TOML_PATH="rdump/Cargo.toml"
-CARGO_LOCK_PATH="rdump/Cargo.lock"
+CARGO_TOML_PATH="crates/rdump/Cargo.toml"
+CARGO_LOCK_PATH="Cargo.lock"
 
 # --- Helper Functions ---
 function check_command() {
@@ -65,8 +65,8 @@ echo "Updating $CARGO_TOML_PATH to version $NEW_VERSION..."
 sed -i.bak "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$CARGO_TOML_PATH"
 rm "${CARGO_TOML_PATH}.bak"
 
-# This command will update Cargo.lock based on the new version in Cargo.toml
-cargo check --manifest-path "$CARGO_TOML_PATH"
+# This command will update the workspace Cargo.lock based on the new version in Cargo.toml
+cargo check -p rdump
 
 # 6. Commit the version bump
 echo "Committing version bump..."
@@ -75,7 +75,7 @@ git commit -m "chore(release): $TAG"
 
 # 7. Publish to crates.io
 echo "Publishing to crates.io..."
-cargo publish --manifest-path "$CARGO_TOML_PATH"
+cargo publish -p rdump
 
 # 8. Push commit and create tag/release on GitHub
 echo "Pushing commit to GitHub..."
@@ -86,4 +86,3 @@ gh release create "$TAG" --generate-notes --title "$TAG"
 
 echo "✅ Release $TAG successfully published!"
 echo "The GitHub Action workflow will now build binaries and attach them to the release."
-

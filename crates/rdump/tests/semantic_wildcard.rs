@@ -1,0 +1,52 @@
+use predicates::prelude::*;
+use std::path::PathBuf;
+
+fn insane_test_bed() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("insane_test_bed")
+}
+
+#[test]
+fn test_semantic_wildcard_matches_any_struct() {
+    let root = insane_test_bed();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    cmd.arg("search")
+        .arg("--root")
+        .arg(root)
+        .arg("--format=paths")
+        .arg("struct:."); // The "." is the "match any" wildcard
+
+    // Should find code.rs (has MyStruct) but not files that only use it
+    // or files without structs like calls.rs or enum.rs
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("code.rs"))
+        .stdout(predicate::str::contains("complex_query.rs").not())
+        .stdout(predicate::str::contains("calls.rs").not())
+        .stdout(predicate::str::contains("enum.rs").not());
+}
+
+#[test]
+fn test_semantic_wildcard_matches_any_function() {
+    let root = insane_test_bed();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
+    cmd.arg("search")
+        .arg("--root")
+        .arg(root)
+        .arg("--format=paths")
+        .arg("func:."); // Match any function
+
+    // Should find all files with function definitions
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("calls.rs"))
+        .stdout(predicate::str::contains("code.rs"))
+        .stdout(predicate::str::contains("complex_query.rs"))
+        .stdout(predicate::str::contains("same_file_def_call.rs"))
+        .stdout(predicate::str::contains("trait.rs"))
+        .stdout(predicate::str::contains("enum.rs").not()); // enums have variants, not funcs
+}

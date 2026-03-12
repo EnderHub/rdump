@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/rdump", "crates/rdump-contracts", "crates/rdump-mcp"]
+resolver = "2"

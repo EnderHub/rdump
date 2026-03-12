@@ -35,15 +35,15 @@ jobs:
         run: |
           ./scripts/regenerate-generated-docs.sh
           git diff --exit-code -- docs/generated
-          cargo build --release --manifest-path rdump/Cargo.toml
-          ./rdump/target/release/rdump --help
+          cargo build --release -p rdump
+          ./target/release/rdump --help
         
       - name: Rename binary for release
         run: |
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            mv rdump/target/release/rdump.exe ${{ matrix.asset_name }}
+            mv target/release/rdump.exe ${{ matrix.asset_name }}
           else
-            mv rdump/target/release/rdump ${{ matrix.asset_name }}
+            mv target/release/rdump ${{ matrix.asset_name }}
           fi
         shell: bash
 
