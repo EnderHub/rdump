@@ -7,6 +7,10 @@ fn normalize_snapshot(value: &mut JsonValue) {
         normalize_paths(value, &root);
     }
 
+    if let Some(page_size) = value.get_mut("page_size") {
+        *page_size = JsonValue::from(0);
+    }
+
     if let Some(stats) = value
         .get_mut("stats")
         .and_then(|entry| entry.as_object_mut())
@@ -25,6 +29,7 @@ fn normalize_snapshot(value: &mut JsonValue) {
 
     normalize_fingerprints(value);
     normalize_modified_times(value);
+    normalize_permissions(value);
 }
 
 fn normalize_paths(value: &mut JsonValue, root: &str) {
@@ -93,6 +98,28 @@ fn normalize_fingerprints(value: &mut JsonValue) {
     }
 }
 
+fn normalize_permissions(value: &mut JsonValue) {
+    match value {
+        JsonValue::Object(map) => {
+            if map.contains_key("permissions_display") {
+                map.insert(
+                    "permissions_display".to_string(),
+                    JsonValue::String("<PERMISSIONS>".to_string()),
+                );
+            }
+            for entry in map.values_mut() {
+                normalize_permissions(entry);
+            }
+        }
+        JsonValue::Array(values) => {
+            for entry in values {
+                normalize_permissions(entry);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[test]
 fn cli_full_json_snapshot_matches() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
@@ -110,10 +137,9 @@ fn cli_full_json_snapshot_matches() -> Result<(), Box<dyn std::error::Error>> {
     assert!(output.status.success());
     let mut json: JsonValue = serde_json::from_slice(&output.stdout)?;
     normalize_snapshot(&mut json);
-    let mut expected: JsonValue =
-        serde_json::from_str(include_str!(
-            "../../../docs/generated/cli-search-full.snapshot.json"
-        ))?;
+    let mut expected: JsonValue = serde_json::from_str(include_str!(
+        "../../../docs/generated/cli-search-full.snapshot.json"
+    ))?;
     normalize_snapshot(&mut expected);
     assert_eq!(
         json, expected,
@@ -140,10 +166,9 @@ fn cli_find_json_snapshot_matches() -> Result<(), Box<dyn std::error::Error>> {
     assert!(output.status.success());
     let mut json: JsonValue = serde_json::from_slice(&output.stdout)?;
     normalize_snapshot(&mut json);
-    let mut expected: JsonValue =
-        serde_json::from_str(include_str!(
-            "../../../docs/generated/cli-search-find.snapshot.json"
-        ))?;
+    let mut expected: JsonValue = serde_json::from_str(include_str!(
+        "../../../docs/generated/cli-search-find.snapshot.json"
+    ))?;
     normalize_snapshot(&mut expected);
     assert_eq!(
         json, expected,

@@ -138,11 +138,19 @@ Operationally, the engine now does:
 
 1. Resolve presets into an effective query.
 2. Parse and validate the query before filesystem walking.
-3. Discover candidate files with canonical-path deduplication and no symlink
-   following by default.
+3. Normalize the root and discover candidate files through `SearchRuntime` and
+   its active `SearchBackend`.
 4. Run metadata prefiltering before content and semantic evaluation.
 5. Materialize either full `SearchResult` values or path-only output, depending
    on the caller.
+
+The storage seam is now explicit:
+
+- `SearchRuntime` owns the backend for one logical search session.
+- `SearchBackend` supplies discovery, path identity normalization, metadata, and
+  bytes for either the host filesystem or a virtual workspace.
+- Request, planner, async, CLI, and MCP flows all route through the same
+  runtime-aware search path.
 
 ---
 
@@ -200,26 +208,24 @@ Operationally, the engine now does:
 
 ### FileContext
 
-Central data structure for file evaluation with lazy-loaded content and AST.
+Central data structure for file evaluation with backend-supplied path identity,
+lazy-loaded metadata, content, and AST state.
 
 ```rust
 pub struct FileContext {
-    pub path: PathBuf,
-    pub metadata: Metadata,
-    content: OnceCell<String>,
+    pub display_path: PathBuf,
+    pub resolved_path: PathBuf,
+    pub root_relative_path: Option<PathBuf>,
+    metadata: OnceCell<BackendMetadata>,
+    content: OnceCell<LoadedContent>,
     tree: OnceCell<Tree>,
-    matches: RefCell<Vec<MatchLocation>>,
 }
 
 impl FileContext {
-    pub fn new(path: PathBuf) -> Result<Self>;
+    pub fn with_backend(path: PathBuf, root: PathBuf, backend: Arc<dyn SearchBackend>) -> Self;
+    pub fn metadata(&self) -> Result<&BackendMetadata>;
     pub fn content(&self) -> Result<&str>;
     pub fn tree(&self, profile: &LanguageProfile) -> Result<&Tree>;
-    pub fn size(&self) -> u64;
-    pub fn modified(&self) -> SystemTime;
-    pub fn extension(&self) -> Option<&str>;
-    pub fn file_name(&self) -> &str;
-    pub fn add_match(&self, line: usize, col: usize, len: usize);
 }
 ```
 

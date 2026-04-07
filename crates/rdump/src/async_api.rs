@@ -5,8 +5,8 @@
 //! backpressure.
 
 use crate::{
-    engine, search_execution_policy, CancelOnDrop, SearchCancellationToken, SearchOptions,
-    SearchResult, SearchResultIterator,
+    search_execution_policy, CancelOnDrop, SearchCancellationToken, SearchOptions, SearchResult,
+    SearchResultIterator, SearchRuntime,
 };
 use anyhow::Result;
 use futures::Stream;
@@ -81,10 +81,30 @@ impl Stream for SearchAsyncStream {
 /// # }
 /// ```
 pub async fn search_async(query: &str, options: SearchOptions) -> Result<SearchAsyncStream> {
-    search_async_with_progress(query, options, |_| {}).await
+    search_async_with_runtime(SearchRuntime::real_fs(), query, options).await
+}
+
+pub async fn search_async_with_runtime(
+    runtime: SearchRuntime,
+    query: &str,
+    options: SearchOptions,
+) -> Result<SearchAsyncStream> {
+    search_async_with_runtime_and_progress(runtime, query, options, |_| {}).await
 }
 
 pub async fn search_async_with_progress<F>(
+    query: &str,
+    options: SearchOptions,
+    progress: F,
+) -> Result<SearchAsyncStream>
+where
+    F: FnMut(rdump_contracts::ProgressEvent) + Send + 'static,
+{
+    search_async_with_runtime_and_progress(SearchRuntime::real_fs(), query, options, progress).await
+}
+
+pub async fn search_async_with_runtime_and_progress<F>(
+    runtime: SearchRuntime,
     query: &str,
     options: SearchOptions,
     mut progress: F,
@@ -111,6 +131,7 @@ where
     );
 
     let root = options.root.display().to_string();
+    let runtime = runtime.clone();
     let handle = tokio::task::spawn_blocking(move || {
         progress(rdump_contracts::ProgressEvent::Started {
             session_id: session_id.clone(),
@@ -120,14 +141,14 @@ where
             queue_wait_millis,
         });
         let _permit = permit;
-        let mut iter = match engine::search_raw_iter(&query, &options, Some(task_cancellation.clone()))
-        {
-            Ok(iter) => SearchResultIterator::from_raw_iter(iter),
-            Err(e) => {
-                let _ = tx.blocking_send(Err(e));
-                return;
-            }
-        };
+        let mut iter =
+            match runtime.search_raw_iter(&query, &options, Some(task_cancellation.clone())) {
+                Ok(iter) => SearchResultIterator::from_raw_iter(iter),
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(e));
+                    return;
+                }
+            };
         let stats = iter.stats().clone();
         progress(rdump_contracts::ProgressEvent::Phase {
             session_id: session_id.clone(),
@@ -234,8 +255,16 @@ where
 /// This collects everything into memory. For large repositories, use
 /// [`search_async`] and stream incrementally.
 pub async fn search_all_async(query: &str, options: SearchOptions) -> Result<Vec<SearchResult>> {
+    search_all_async_with_runtime(SearchRuntime::real_fs(), query, options).await
+}
+
+pub async fn search_all_async_with_runtime(
+    runtime: SearchRuntime,
+    query: &str,
+    options: SearchOptions,
+) -> Result<Vec<SearchResult>> {
     use futures::StreamExt;
 
-    let stream = search_async(query, options).await?;
+    let stream = search_async_with_runtime(runtime, query, options).await?;
     stream.collect::<Vec<_>>().await.into_iter().collect()
 }

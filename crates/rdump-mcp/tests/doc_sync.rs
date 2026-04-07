@@ -47,7 +47,12 @@ fn readme_mentions_current_mcp_contract_markers() {
 #[test]
 fn mcp_docs_track_runtime_and_session_resources() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let docs_dir = manifest_dir.parent().unwrap().parent().unwrap().join("docs");
+    let docs_dir = manifest_dir
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("docs");
 
     let stdio = fs::read_to_string(docs_dir.join("mcp-stdio-guide.md")).unwrap();
     for expected in [

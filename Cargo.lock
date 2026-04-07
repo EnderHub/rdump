@@ -2012,6 +2012,7 @@ dependencies = [
 name = "rdump-mcp"
 version = "0.1.2"
 dependencies = [
+ "anyhow",
  "rdump",
  "rdump-contracts",
  "schemars",

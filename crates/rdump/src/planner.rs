@@ -1,6 +1,4 @@
 use anyhow::{anyhow, Result};
-use globset::{Glob, GlobSet, GlobSetBuilder};
-use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
@@ -10,7 +8,7 @@ use crate::predicates::helpers::{parse_modified_predicate, parse_size_predicate}
 use crate::predicates::{
     content_predicate_keys, metadata_predicate_keys, react_predicate_keys, semantic_predicate_keys,
 };
-use crate::SearchOptions;
+use crate::{SearchOptions, SearchRuntime};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryStage {
@@ -98,19 +96,15 @@ pub struct EffectiveQuery {
     pub config_diagnostics: Vec<ConfigDiagnostic>,
 }
 
-static DEFAULT_IGNORE_PATTERNS: &[&str] = &[
-    "node_modules/**",
-    "target/**",
-    "dist/**",
-    "build/**",
-    ".git/**",
-    ".svn/**",
-    ".hg/**",
-    "**/*.pyc",
-    "**/__pycache__/**",
-];
-
 pub fn explain_query(query: &str, options: &SearchOptions) -> Result<QueryExplanation> {
+    explain_query_with_runtime(&SearchRuntime::real_fs(), query, options)
+}
+
+pub fn explain_query_with_runtime(
+    runtime: &SearchRuntime,
+    query: &str,
+    options: &SearchOptions,
+) -> Result<QueryExplanation> {
     let effective = resolve_effective_query_details(query, options)?;
     let ast = parser::parse_query(&effective.effective_query)?;
     let normalized_query = ast.to_canonical_string();
@@ -171,7 +165,7 @@ pub fn explain_query(query: &str, options: &SearchOptions) -> Result<QueryExplan
     notes.sort();
     notes.dedup();
 
-    let preflight = repo_preflight(&optimized_ast, options);
+    let preflight = repo_preflight(runtime, &optimized_ast, options);
     if !preflight.warnings.is_empty() {
         notes.extend(preflight.warnings.clone());
         notes.sort();
@@ -345,35 +339,33 @@ pub fn resolve_effective_query_details(
 }
 
 pub fn repo_language_inventory(options: &SearchOptions) -> Vec<RepoLanguageCount> {
-    let root = dunce::canonicalize(&options.root).unwrap_or_else(|_| options.root.clone());
-    let default_ignore = default_ignore_set();
-    let mut builder = WalkBuilder::new(&root);
-    builder
-        .hidden(!options.hidden)
-        .follow_links(false)
-        .max_depth(options.max_depth)
-        .ignore(!options.no_ignore)
-        .git_ignore(!options.no_ignore)
-        .git_global(!options.no_ignore)
-        .git_exclude(!options.no_ignore);
-    if !options.no_ignore {
-        builder.add_custom_ignore_filename(".rdumpignore");
-    }
+    repo_language_inventory_with_runtime(&SearchRuntime::real_fs(), options)
+}
 
+pub fn repo_language_inventory_with_runtime(
+    runtime: &SearchRuntime,
+    options: &SearchOptions,
+) -> Vec<RepoLanguageCount> {
+    let Ok(root) = runtime.backend().normalize_root(&options.root) else {
+        return Vec::new();
+    };
+    let Ok(discovery) = runtime
+        .backend()
+        .discover(&crate::backend::DiscoveryRequest {
+            root,
+            display_root: options.root.clone(),
+            no_ignore: options.no_ignore,
+            hidden: options.hidden,
+            max_depth: options.max_depth,
+            ignore_debug: false,
+        })
+    else {
+        return Vec::new();
+    };
     let mut counts = BTreeMap::<String, usize>::new();
-    for entry in builder.build().flatten() {
-        if !entry
-            .file_type()
-            .is_some_and(|file_type| file_type.is_file())
-        {
-            continue;
-        }
-        let path = entry.path();
-        let relative = path.strip_prefix(&root).unwrap_or(path);
-        if !options.no_ignore && default_ignore.is_match(relative) {
-            continue;
-        }
-        let extension = path
+    for candidate in discovery.candidates {
+        let extension = candidate
+            .resolved_path
             .extension()
             .and_then(|extension| extension.to_str())
             .unwrap_or("")
@@ -659,9 +651,13 @@ fn collect_stable_children(
     }
 }
 
-fn repo_preflight(ast: &AstNode, options: &SearchOptions) -> QueryPreflight {
+fn repo_preflight(
+    runtime: &SearchRuntime,
+    ast: &AstNode,
+    options: &SearchOptions,
+) -> QueryPreflight {
     let semantic_predicates_present = contains_semantic_predicates(ast);
-    let inventory = repo_language_inventory(options);
+    let inventory = repo_language_inventory_with_runtime(runtime, options);
     let semantic_candidate_files = inventory
         .iter()
         .filter(|entry| entry.semantic_profile.is_some())
@@ -698,17 +694,152 @@ fn contains_semantic_predicates(ast: &AstNode) -> bool {
     }
 }
 
-fn default_ignore_set() -> GlobSet {
-    let mut builder = GlobSetBuilder::new();
-    for pattern in DEFAULT_IGNORE_PATTERNS {
-        builder.add(Glob::new(pattern).expect("default ignore glob should compile"));
-    }
-    builder.build().expect("default ignore set should compile")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::{
+        BackendFileType, BackendMetadata, BackendPathIdentity, DiscoveryReport, DiscoveryRequest,
+        SearchBackend,
+    };
+    use anyhow::{anyhow, Result};
+    use std::collections::BTreeMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+
+    #[derive(Debug)]
+    struct FakeBackend {
+        root: PathBuf,
+        files: BTreeMap<PathBuf, BackendMetadata>,
+    }
+
+    impl FakeBackend {
+        fn new(root: PathBuf, files: impl IntoIterator<Item = PathBuf>) -> Self {
+            let files = files
+                .into_iter()
+                .map(|relative| {
+                    (
+                        relative.clone(),
+                        BackendMetadata {
+                            size_bytes: 1,
+                            modified_unix_millis: Some(1_700_000_000_000),
+                            readonly: false,
+                            permissions_display: "-rw-r--r--".to_string(),
+                            file_type: BackendFileType::File,
+                            stable_token: Some(format!("token:{}", relative.display())),
+                            device_id: None,
+                            inode: None,
+                        },
+                    )
+                })
+                .collect();
+            Self { root, files }
+        }
+
+        fn relative_key(&self, path: &Path) -> Result<PathBuf> {
+            if let Ok(relative) = path.strip_prefix(&self.root) {
+                return Ok(relative.to_path_buf());
+            }
+            if self.files.contains_key(path) {
+                return Ok(path.to_path_buf());
+            }
+            Err(anyhow!("unknown virtual path {}", path.display()))
+        }
+    }
+
+    impl SearchBackend for FakeBackend {
+        fn normalize_root(&self, root: &Path) -> Result<PathBuf> {
+            if root == self.root {
+                Ok(self.root.clone())
+            } else {
+                Err(anyhow!("unexpected root {}", root.display()))
+            }
+        }
+
+        fn discover(&self, request: &DiscoveryRequest) -> Result<DiscoveryReport> {
+            if request.root != self.root {
+                return Err(anyhow!("unexpected root {}", request.root.display()));
+            }
+
+            let candidates = self
+                .files
+                .keys()
+                .cloned()
+                .map(|relative| BackendPathIdentity {
+                    display_path: relative.clone(),
+                    resolved_path: self.root.join(&relative),
+                    root_relative_path: Some(relative),
+                    resolution: crate::PathResolution::Canonical,
+                })
+                .collect();
+
+            Ok(DiscoveryReport {
+                candidates,
+                ..Default::default()
+            })
+        }
+
+        fn normalize_path(
+            &self,
+            root: &Path,
+            _display_root: &Path,
+            path: &Path,
+        ) -> Result<BackendPathIdentity> {
+            if root != self.root {
+                return Err(anyhow!("unexpected root {}", root.display()));
+            }
+            let relative = self.relative_key(path)?;
+            Ok(BackendPathIdentity {
+                display_path: relative.clone(),
+                resolved_path: self.root.join(&relative),
+                root_relative_path: Some(relative),
+                resolution: crate::PathResolution::Canonical,
+            })
+        }
+
+        fn stat(&self, path: &Path) -> Result<BackendMetadata> {
+            let relative = self.relative_key(path)?;
+            self.files
+                .get(&relative)
+                .cloned()
+                .ok_or_else(|| anyhow!("missing metadata for {}", path.display()))
+        }
+
+        fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+            let _ = self.relative_key(path)?;
+            Ok(b"placeholder".to_vec())
+        }
+    }
+
+    #[test]
+    fn runtime_inventory_and_preflight_use_supplied_backend() {
+        let root = PathBuf::from("/virtual");
+        let runtime = SearchRuntime::with_backend(Arc::new(FakeBackend::new(
+            root.clone(),
+            [
+                PathBuf::from("src/lib.rs"),
+                PathBuf::from("src/main.rs"),
+                PathBuf::from("README.md"),
+            ],
+        )));
+        let options = SearchOptions {
+            root,
+            ..Default::default()
+        };
+
+        let inventory = repo_language_inventory_with_runtime(&runtime, &options);
+        assert_eq!(inventory.len(), 2);
+        assert_eq!(inventory[0].extension, "md");
+        assert_eq!(inventory[0].files, 1);
+        assert_eq!(inventory[0].semantic_profile, None);
+        assert_eq!(inventory[1].extension, "rs");
+        assert_eq!(inventory[1].files, 2);
+        assert_eq!(inventory[1].semantic_profile.as_deref(), Some("rs"));
+
+        let explanation = explain_query_with_runtime(&runtime, "func:main", &options).unwrap();
+        assert!(explanation.preflight.semantic_predicates_present);
+        assert_eq!(explanation.preflight.semantic_candidate_files, 2);
+        assert!(explanation.preflight.warnings.is_empty());
+    }
 
     #[test]
     fn explain_query_classifies_predicates() {

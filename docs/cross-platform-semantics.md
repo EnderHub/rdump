@@ -17,8 +17,17 @@ This document records the portability rules that machine consumers should rely o
 ## Paths
 
 - Machine-facing results expose both `display_path` and `resolved_path`.
+- `display_path` is the user-facing path projection for the active backend.
+- `resolved_path` is a backend-normalized stable identity path; on the real filesystem it is usually canonical, but virtual backends may supply a non-host path that is still stable within that backend.
 - `root_relative_path` is present when the file can be rewritten relative to the search root.
 - Path-ordering is stable and lexicographic by display path, then resolved path.
+- `resolution=canonical` means the backend supplied its preferred normalized identity path; it does not require a host-filesystem canonical path.
+
+## Snapshot identity
+
+- Result snapshots may include `stable_token` when a backend has stronger content/version identity than size and mtime alone.
+- Real-fs mode may omit `stable_token` and rely on size, mtime, and optional inode/device metadata.
+- Virtual backends may use `stable_token` for drift detection even when `resolved_path` is not a host path.
 
 ## Line endings
 

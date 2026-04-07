@@ -18,6 +18,8 @@ fn architecture_doc_mentions_current_public_surface() {
         "search_path_iter",
         "search_paths",
         "explain_query",
+        "SearchRuntime",
+        "SearchBackend",
         "ContentState",
         "SearchDiagnostic",
     ] {
@@ -31,7 +33,12 @@ fn architecture_doc_mentions_current_public_surface() {
 #[test]
 fn operational_docs_track_current_output_and_platform_contracts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let docs_dir = manifest_dir.parent().unwrap().parent().unwrap().join("docs");
+    let docs_dir = manifest_dir
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("docs");
 
     let output_parity = fs::read_to_string(docs_dir.join("output-parity.md")).unwrap();
     for expected in ["summary", "matches", "snippets", "full"] {
@@ -42,7 +49,14 @@ fn operational_docs_track_current_output_and_platform_contracts() {
     }
 
     let runtime = fs::read_to_string(docs_dir.join("runtime-guide.md")).unwrap();
-    for expected in ["search_with_stats", "search_path_iter", "schema_version"] {
+    for expected in [
+        "search_with_stats",
+        "search_path_iter",
+        "SearchRuntime::with_backend",
+        "execute_search_request_with_runtime",
+        "search_async_with_runtime",
+        "schema_version",
+    ] {
         assert!(
             runtime.contains(expected),
             "runtime-guide.md is missing `{expected}`"
@@ -50,7 +64,13 @@ fn operational_docs_track_current_output_and_platform_contracts() {
     }
 
     let platform = fs::read_to_string(docs_dir.join("cross-platform-semantics.md")).unwrap();
-    for expected in ["root_relative_path", "permissions_display", "line endings"] {
+    for expected in [
+        "root_relative_path",
+        "permissions_display",
+        "resolved_path",
+        "stable_token",
+        "line endings",
+    ] {
         assert!(
             platform.contains(expected),
             "cross-platform-semantics.md is missing `{expected}`"

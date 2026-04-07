@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::backend::{RealFsSearchBackend, SearchBackend};
 use crate::limits::{is_probably_binary, maybe_contains_secret, MAX_FILE_SIZE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -216,29 +216,39 @@ pub struct LoadedContent {
 }
 
 pub fn load_search_content(path: &Path) -> Result<LoadedContent> {
-    let metadata = fs::metadata(path)
-        .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
+    load_search_content_with_backend(&RealFsSearchBackend, path, path)
+}
 
-    if metadata.len() > MAX_FILE_SIZE {
+pub fn load_search_content_with_backend(
+    backend: &dyn SearchBackend,
+    resolved_path: &Path,
+    display_path: &Path,
+) -> Result<LoadedContent> {
+    let metadata = backend
+        .stat(resolved_path)
+        .with_context(|| format!("Failed to read metadata for {}", display_path.display()))?;
+
+    if metadata.size_bytes > MAX_FILE_SIZE {
         return Ok(LoadedContent {
             content: Arc::<str>::from(""),
             state: ContentState::Skipped {
                 reason: ContentSkipReason::TooLarge,
             },
             diagnostics: vec![SearchDiagnostic::content_skipped(
-                path.to_path_buf(),
+                display_path.to_path_buf(),
                 ContentSkipReason::TooLarge,
                 format!(
                     "Skipping {} because it exceeds the max file size of {} bytes",
-                    path.display(),
+                    display_path.display(),
                     MAX_FILE_SIZE
                 ),
             )],
         });
     }
 
-    let bytes =
-        fs::read(path).with_context(|| format!("Failed to read file {}", path.display()))?;
+    let bytes = backend
+        .read_bytes(resolved_path)
+        .with_context(|| format!("Failed to read file {}", display_path.display()))?;
     let check_len = bytes.len().min(8192);
 
     if is_probably_binary(&bytes[..check_len]) {
@@ -248,9 +258,9 @@ pub fn load_search_content(path: &Path) -> Result<LoadedContent> {
                 reason: ContentSkipReason::Binary,
             },
             diagnostics: vec![SearchDiagnostic::content_skipped(
-                path.to_path_buf(),
+                display_path.to_path_buf(),
                 ContentSkipReason::Binary,
-                format!("Skipping binary file {}", path.display()),
+                format!("Skipping binary file {}", display_path.display()),
             )],
         });
     }
@@ -264,11 +274,11 @@ pub fn load_search_content(path: &Path) -> Result<LoadedContent> {
                         reason: ContentSkipReason::SecretLike,
                     },
                     diagnostics: vec![SearchDiagnostic::content_skipped(
-                        path.to_path_buf(),
+                        display_path.to_path_buf(),
                         ContentSkipReason::SecretLike,
                         format!(
                             "Skipping possible secret-containing file {}",
-                            path.display()
+                            display_path.display()
                         ),
                     )],
                 });
@@ -289,11 +299,11 @@ pub fn load_search_content(path: &Path) -> Result<LoadedContent> {
                         reason: ContentSkipReason::SecretLike,
                     },
                     diagnostics: vec![SearchDiagnostic::content_skipped(
-                        path.to_path_buf(),
+                        display_path.to_path_buf(),
                         ContentSkipReason::SecretLike,
                         format!(
                             "Skipping possible secret-containing file {}",
-                            path.display()
+                            display_path.display()
                         ),
                     )],
                 });
@@ -305,8 +315,11 @@ pub fn load_search_content(path: &Path) -> Result<LoadedContent> {
                 diagnostics: vec![SearchDiagnostic::new(
                     DiagnosticLevel::Warn,
                     DiagnosticKind::ContentDecodedLossy,
-                    format!("Decoded {} with lossy UTF-8 replacement", path.display()),
-                    Some(path.to_path_buf()),
+                    format!(
+                        "Decoded {} with lossy UTF-8 replacement",
+                        display_path.display()
+                    ),
+                    Some(display_path.to_path_buf()),
                 )],
             })
         }
@@ -322,7 +335,7 @@ mod tests {
     fn loads_utf8_content() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.txt");
-        fs::write(&path, "hello").unwrap();
+        std::fs::write(&path, "hello").unwrap();
 
         let loaded = load_search_content(&path).unwrap();
         assert_eq!(loaded.content.as_ref(), "hello");
@@ -334,7 +347,7 @@ mod tests {
     fn decodes_invalid_utf8_lossily() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.txt");
-        fs::write(&path, [0x41, 0x42, 0xC3, 0x28, 0x43]).unwrap();
+        std::fs::write(&path, [0x41, 0x42, 0xC3, 0x28, 0x43]).unwrap();
 
         let loaded = load_search_content(&path).unwrap();
         assert!(loaded.state.is_loaded());
@@ -346,7 +359,7 @@ mod tests {
     fn skips_binary_files() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.bin");
-        fs::write(&path, b"abc\x00def").unwrap();
+        std::fs::write(&path, b"abc\x00def").unwrap();
 
         let loaded = load_search_content(&path).unwrap();
         assert_eq!(
@@ -362,7 +375,7 @@ mod tests {
     fn skips_secret_like_files() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("secret.txt");
-        fs::write(&path, "aws_secret_access_key=123").unwrap();
+        std::fs::write(&path, "aws_secret_access_key=123").unwrap();
 
         let loaded = load_search_content(&path).unwrap();
         assert_eq!(

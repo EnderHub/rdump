@@ -11,8 +11,7 @@ impl PredicateEvaluator for SizeEvaluator {
         _key: &PredicateKey,
         value: &str,
     ) -> Result<MatchResult> {
-        let metadata = context.path.metadata()?;
-        let file_size = metadata.len();
+        let file_size = context.metadata()?.size_bytes;
         Ok(MatchResult::Boolean(helpers::parse_and_compare_size(
             file_size, value,
         )?))

@@ -60,14 +60,29 @@ pub fn build_search_request(args: SearchArgs) -> McpResult<SearchRequest> {
 }
 
 pub fn run_search(params: SearchRequest) -> McpResult<rdump::contracts::SearchResponse> {
-    run_search_with_cancellation(params, rdump::SearchCancellationToken::new())
+    run_search_with_runtime(params, rdump::SearchRuntime::real_fs())
+}
+
+pub fn run_search_with_runtime(
+    params: SearchRequest,
+    runtime: rdump::SearchRuntime,
+) -> McpResult<rdump::contracts::SearchResponse> {
+    run_search_with_runtime_and_cancellation(params, runtime, rdump::SearchCancellationToken::new())
 }
 
 pub fn run_search_with_cancellation(
     params: SearchRequest,
     cancellation: rdump::SearchCancellationToken,
 ) -> McpResult<rdump::contracts::SearchResponse> {
-    run_search_with_cancellation_and_progress(params, cancellation, |_| {})
+    run_search_with_runtime_and_cancellation(params, rdump::SearchRuntime::real_fs(), cancellation)
+}
+
+pub fn run_search_with_runtime_and_cancellation(
+    params: SearchRequest,
+    runtime: rdump::SearchRuntime,
+    cancellation: rdump::SearchCancellationToken,
+) -> McpResult<rdump::contracts::SearchResponse> {
+    run_search_with_runtime_and_cancellation_and_progress(params, runtime, cancellation, |_| {})
 }
 
 pub fn run_search_with_cancellation_and_progress<F>(
@@ -78,7 +93,25 @@ pub fn run_search_with_cancellation_and_progress<F>(
 where
     F: FnMut(&ProgressEvent),
 {
-    rdump::request::execute_search_request_with_progress_and_cancellation(
+    run_search_with_runtime_and_cancellation_and_progress(
+        params,
+        rdump::SearchRuntime::real_fs(),
+        cancellation,
+        &mut progress,
+    )
+}
+
+pub fn run_search_with_runtime_and_cancellation_and_progress<F>(
+    params: SearchRequest,
+    runtime: rdump::SearchRuntime,
+    cancellation: rdump::SearchCancellationToken,
+    mut progress: F,
+) -> McpResult<rdump::contracts::SearchResponse>
+where
+    F: FnMut(&ProgressEvent),
+{
+    rdump::request::execute_search_request_with_runtime_and_cancellation(
+        runtime,
         &params,
         Some(cancellation),
         "mcp-search",

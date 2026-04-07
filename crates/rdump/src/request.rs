@@ -10,13 +10,11 @@ use rdump_contracts::{
     SurfaceStability, SCHEMA_VERSION,
 };
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::time::UNIX_EPOCH;
 
 use crate::{
-    engine, materialize_raw_search_item, SearchCancellationToken, SearchDiagnostic, SearchOptions,
-    SearchResult,
+    materialize_raw_search_item, SearchCancellationToken, SearchDiagnostic, SearchOptions,
+    SearchResult, SearchRuntime,
 };
 
 pub const DEFAULT_MAX_RESULTS: usize = 50;
@@ -134,6 +132,7 @@ struct PendingSearchItem {
 
 #[derive(Debug)]
 pub struct SearchRequestPager {
+    runtime: SearchRuntime,
     session_id: String,
     request: SearchRequest,
     output: OutputMode,
@@ -142,7 +141,7 @@ pub struct SearchRequestPager {
     root: String,
     effective_query: String,
     line_endings: LineEndingMode,
-    raw_iter: engine::SearchRawIterator,
+    raw_iter: crate::engine::SearchRawIterator,
     pending: Option<PendingSearchItem>,
     current_offset: usize,
     reported_engine_diagnostics: usize,
@@ -156,15 +155,25 @@ impl SearchRequestPager {
         session_id: impl Into<String>,
         cancellation: Option<SearchCancellationToken>,
     ) -> Result<Self> {
+        Self::with_runtime(SearchRuntime::real_fs(), request, session_id, cancellation)
+    }
+
+    pub fn with_runtime(
+        runtime: SearchRuntime,
+        request: &SearchRequest,
+        session_id: impl Into<String>,
+        cancellation: Option<SearchCancellationToken>,
+    ) -> Result<Self> {
         let output = request.output.unwrap_or(OutputMode::Snippets);
         let limits = resolve_limits(request.limits.clone());
         let context_lines = request.context_lines.unwrap_or(DEFAULT_CONTEXT_LINES);
         let root = request.root.clone().unwrap_or_else(|| ".".to_string());
         let options = search_options_from_request(request);
-        let explanation = crate::explain_query(&request.query, &options)?;
-        let raw_iter = engine::search_raw_iter(&request.query, &options, cancellation)?;
+        let explanation = crate::explain_query_with_runtime(&runtime, &request.query, &options)?;
+        let raw_iter = runtime.search_raw_iter(&request.query, &options, cancellation)?;
 
         let mut pager = Self {
+            runtime,
             session_id: session_id.into(),
             request: request.clone(),
             output,
@@ -194,7 +203,11 @@ impl SearchRequestPager {
 
     pub fn estimated_state_bytes(&self) -> usize {
         self.raw_iter.estimated_state_bytes()
-            + self.pending.as_ref().map(|item| item.approx_bytes).unwrap_or(0)
+            + self
+                .pending
+                .as_ref()
+                .map(|item| item.approx_bytes)
+                .unwrap_or(0)
             + self.session_id.len()
             + self.request.query.len()
             + self.root.len()
@@ -235,12 +248,7 @@ impl SearchRequestPager {
             let entry = match self.poll_item() {
                 Some(Ok(entry)) => entry,
                 Some(Err(err)) => {
-                    handle_error(
-                        &mut errors,
-                        &self.limits,
-                        self.request.error_mode,
-                        err,
-                    )?;
+                    handle_error(&mut errors, &self.limits, self.request.error_mode, err)?;
                     continue;
                 }
                 None => break,
@@ -420,6 +428,11 @@ impl SearchRequestPager {
                     root_relative_path: raw.root_relative_path.clone(),
                     resolution: raw.resolution,
                 };
+                let backend_metadata = if raw.snapshot.is_none() {
+                    Some(self.runtime.backend().stat(&raw.resolved_path)?)
+                } else {
+                    None
+                };
                 let item = SearchItem::Path {
                     path: render_contract_path(&file, self.request.path_display),
                     file: map_file_identity(&file),
@@ -427,20 +440,29 @@ impl SearchRequestPager {
                         .snapshot
                         .as_ref()
                         .map(|snapshot| {
-                            format!(
-                                "{}:{}:{}:{}:{}",
-                                snapshot.len,
-                                snapshot.modified_unix_millis.unwrap_or_default(),
-                                snapshot.readonly,
-                                snapshot.device_id.unwrap_or_default(),
-                                snapshot.inode.unwrap_or_default()
-                            )
+                            snapshot.stable_token.clone().unwrap_or_else(|| {
+                                format!(
+                                    "{}:{}:{}:{}:{}",
+                                    snapshot.len,
+                                    snapshot.modified_unix_millis.unwrap_or_default(),
+                                    snapshot.readonly,
+                                    snapshot.device_id.unwrap_or_default(),
+                                    snapshot.inode.unwrap_or_default()
+                                )
+                            })
+                        })
+                        .or_else(|| {
+                            backend_metadata.as_ref().map(|metadata| {
+                                backend_path_fingerprint(metadata, &raw.resolved_path)
+                            })
                         })
                         .unwrap_or_else(|| raw.resolved_path.display().to_string()),
                     metadata: if let Some(snapshot) = raw.snapshot.as_ref() {
                         snapshot.to_path_metadata()
+                    } else if let Some(metadata) = backend_metadata.as_ref() {
+                        metadata.to_path_metadata()
                     } else {
-                        path_metadata(&raw.resolved_path)?
+                        path_metadata(self.runtime.backend().as_ref(), &raw.resolved_path)?
                     },
                     result_kind: if raw.ranges.is_empty() {
                         ContractResultKind::WholeFile
@@ -450,7 +472,11 @@ impl SearchRequestPager {
                     item_truncated: false,
                 };
                 let path = item_path(&item).to_string();
-                let diagnostics = raw.diagnostics.iter().map(map_diagnostic).collect::<Vec<_>>();
+                let diagnostics = raw
+                    .diagnostics
+                    .iter()
+                    .map(map_diagnostic)
+                    .collect::<Vec<_>>();
                 Ok(PendingSearchItem {
                     approx_bytes: estimate_search_item_bytes(&item),
                     item,
@@ -462,8 +488,13 @@ impl SearchRequestPager {
             _ => {
                 let result = materialize_raw_search_item(raw)?;
                 let path = result.path.display().to_string();
-                let diagnostics = result.diagnostics.iter().map(map_diagnostic).collect::<Vec<_>>();
+                let diagnostics = result
+                    .diagnostics
+                    .iter()
+                    .map(map_diagnostic)
+                    .collect::<Vec<_>>();
                 let (item, match_count) = build_item(
+                    self.runtime.backend().as_ref(),
                     self.output,
                     &result,
                     self.context_lines,
@@ -499,6 +530,13 @@ pub fn execute_search_request(request: &SearchRequest) -> Result<SearchResponse>
     execute_search_request_with_progress(request, |_| {})
 }
 
+pub fn execute_search_request_with_runtime(
+    runtime: SearchRuntime,
+    request: &SearchRequest,
+) -> Result<SearchResponse> {
+    execute_search_request_with_runtime_and_progress(runtime, request, |_| {})
+}
+
 pub fn execute_search_request_with_progress<F>(
     request: &SearchRequest,
     mut progress: F,
@@ -506,7 +544,23 @@ pub fn execute_search_request_with_progress<F>(
 where
     F: FnMut(&ProgressEvent),
 {
-    execute_search_request_with_progress_and_cancellation(
+    execute_search_request_with_runtime_and_progress(
+        SearchRuntime::real_fs(),
+        request,
+        &mut progress,
+    )
+}
+
+pub fn execute_search_request_with_runtime_and_progress<F>(
+    runtime: SearchRuntime,
+    request: &SearchRequest,
+    mut progress: F,
+) -> Result<SearchResponse>
+where
+    F: FnMut(&ProgressEvent),
+{
+    execute_search_request_with_runtime_and_cancellation(
+        runtime,
         request,
         None,
         "sync-request",
@@ -523,7 +577,27 @@ pub fn execute_search_request_with_progress_and_cancellation<F>(
 where
     F: FnMut(&ProgressEvent),
 {
-    let mut pager = SearchRequestPager::new(request, session_id.to_string(), cancellation)?;
+    execute_search_request_with_runtime_and_cancellation(
+        SearchRuntime::real_fs(),
+        request,
+        cancellation,
+        session_id,
+        &mut progress,
+    )
+}
+
+pub fn execute_search_request_with_runtime_and_cancellation<F>(
+    runtime: SearchRuntime,
+    request: &SearchRequest,
+    cancellation: Option<SearchCancellationToken>,
+    session_id: &str,
+    mut progress: F,
+) -> Result<SearchResponse>
+where
+    F: FnMut(&ProgressEvent),
+{
+    let mut pager =
+        SearchRequestPager::with_runtime(runtime, request, session_id.to_string(), cancellation)?;
     pager.next_page(&mut progress)
 }
 
@@ -662,6 +736,7 @@ fn handle_error(
 }
 
 fn build_item(
+    backend: &dyn crate::backend::SearchBackend,
     output: OutputMode,
     result: &SearchResult,
     context_lines: usize,
@@ -772,7 +847,7 @@ fn build_item(
                 metadata: if let Some(snapshot) = result.metadata.snapshot.as_ref() {
                     snapshot.to_path_metadata()
                 } else {
-                    path_metadata(&result.file_identity().resolved_path)?
+                    path_metadata(backend, &result.file_identity().resolved_path)?
                 },
                 result_kind,
                 item_truncated: false,
@@ -1320,29 +1395,26 @@ pub fn predicate_catalog() -> PredicateCatalog {
     }
 }
 
-fn path_metadata(path: &std::path::Path) -> Result<PathMetadata> {
-    let metadata = std::fs::metadata(path)?;
-    let readonly = metadata.permissions().readonly();
-    #[cfg(unix)]
-    let permissions_display = crate::formatter::format_mode(metadata.permissions().mode());
-    #[cfg(not(unix))]
-    let permissions_display = if readonly {
-        "readonly".to_string()
-    } else {
-        "readwrite".to_string()
-    };
+fn path_metadata(
+    backend: &dyn crate::backend::SearchBackend,
+    path: &std::path::Path,
+) -> Result<PathMetadata> {
+    Ok(backend.stat(path)?.to_path_metadata())
+}
 
-    let modified_unix_millis = metadata
-        .modified()
-        .ok()
-        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-        .map(|duration| duration.as_millis() as i64);
-
-    Ok(PathMetadata {
-        size_bytes: metadata.len(),
-        modified_unix_millis,
-        readonly,
-        permissions_display,
+fn backend_path_fingerprint(
+    metadata: &crate::backend::BackendMetadata,
+    _resolved_path: &std::path::Path,
+) -> String {
+    metadata.stable_token.clone().unwrap_or_else(|| {
+        format!(
+            "{}:{}:{}:{}:{}",
+            metadata.size_bytes,
+            metadata.modified_unix_millis.unwrap_or_default(),
+            metadata.readonly,
+            metadata.device_id.unwrap_or_default(),
+            metadata.inode.unwrap_or_default()
+        )
     })
 }
 

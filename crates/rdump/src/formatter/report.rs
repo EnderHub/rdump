@@ -1,17 +1,16 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
+use rdump_contracts::SearchItem;
 use serde::Serialize;
-use std::fs;
 use std::io::Write;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use syntect::util::LinesWithEndings;
 
+use crate::backend::{RealFsSearchBackend, SearchBackend};
 use crate::formatter::shared::{
-    content_notice, content_state_label, display_path_text, escape_human_text, format_mode,
-    format_size, format_timestamp, get_contextual_line_ranges_from_matches,
-    print_content_with_style, print_markdown_fenced_content, snippet_range_for_match,
+    content_notice, content_state_label, display_path_text, escape_human_text, format_size,
+    format_timestamp, get_contextual_line_ranges_from_matches, print_content_with_style,
+    print_markdown_fenced_content, snippet_range_for_match,
 };
 use crate::{Format, SearchDiagnostic, SearchReport, SearchResult, SearchStats, TimeFormat};
 
@@ -32,11 +31,58 @@ pub fn print_path_output(
     format: &Format,
     time_format: TimeFormat,
 ) -> Result<()> {
+    print_path_output_with_backend(&RealFsSearchBackend, writer, paths, format, time_format)
+}
+
+pub fn print_path_output_with_backend(
+    backend: &dyn SearchBackend,
+    writer: &mut impl Write,
+    paths: &[PathBuf],
+    format: &Format,
+    time_format: TimeFormat,
+) -> Result<()> {
     match format {
-        Format::Find => print_find_paths(writer, paths, time_format)?,
+        Format::Find => print_find_paths(backend, writer, paths, time_format)?,
         Format::Paths => print_paths_only(writer, paths)?,
         other => anyhow::bail!("path-only output does not support format {:?}", other),
     }
+    Ok(())
+}
+
+pub fn print_contract_path_items(
+    writer: &mut impl Write,
+    items: &[SearchItem],
+    format: &Format,
+    time_format: TimeFormat,
+) -> Result<()> {
+    for item in items {
+        let SearchItem::Path { path, metadata, .. } = item else {
+            continue;
+        };
+
+        match format {
+            Format::Paths => {
+                writeln!(writer, "{path}")?;
+            }
+            Format::Find => {
+                let size_str = format_size(metadata.size_bytes);
+                let time_str = metadata
+                    .modified_unix_millis
+                    .and_then(|millis| {
+                        chrono::TimeZone::timestamp_millis_opt(&Local, millis).single()
+                    })
+                    .map(|modified| format_timestamp(modified, time_format))
+                    .unwrap_or_else(|| "-".to_string());
+                writeln!(
+                    writer,
+                    "{:<12} {:>8} {} {}",
+                    metadata.permissions_display, size_str, time_str, path
+                )?;
+            }
+            other => anyhow::bail!("path-only output does not support format {:?}", other),
+        }
+    }
+
     Ok(())
 }
 
@@ -52,14 +98,7 @@ pub fn print_report_output(
     time_format: TimeFormat,
 ) -> Result<()> {
     match format {
-        Format::Find => {
-            let paths: Vec<_> = report
-                .results
-                .iter()
-                .map(|result| result.path.clone())
-                .collect();
-            print_find_paths(writer, &paths, time_format)?
-        }
+        Format::Find => print_find_results(writer, &report.results, time_format)?,
         Format::Paths => {
             let paths: Vec<_> = report
                 .results
@@ -209,32 +248,61 @@ fn print_paths_only(writer: &mut impl Write, paths: &[PathBuf]) -> Result<()> {
 }
 
 fn print_find_paths(
+    backend: &dyn SearchBackend,
     writer: &mut impl Write,
     paths: &[PathBuf],
     time_format: TimeFormat,
 ) -> Result<()> {
     for path in paths {
-        let metadata = fs::metadata(path)
+        let metadata = backend
+            .stat(path)
             .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
-        let size = metadata.len();
-        let modified: DateTime<Local> = DateTime::from(metadata.modified()?);
-        let perms = metadata.permissions();
-        #[cfg(unix)]
-        let mode = perms.mode();
-        #[cfg(not(unix))]
-        let mode = 0;
-        let perms_str = format_mode(mode);
-        let size_str = format_size(size);
-        let time_str = format_timestamp(modified, time_format);
+        let size_str = format_size(metadata.size_bytes);
+        let time_str = metadata
+            .modified_unix_millis
+            .and_then(|millis| chrono::TimeZone::timestamp_millis_opt(&Local, millis).single())
+            .map(|modified: DateTime<Local>| format_timestamp(modified, time_format))
+            .unwrap_or_else(|| "-".to_string());
 
         writeln!(
             writer,
             "{:<12} {:>8} {} {}",
-            perms_str,
+            metadata.permissions_display,
             size_str,
             time_str,
             display_path_text(path)
         )?;
+    }
+    Ok(())
+}
+
+fn print_find_results(
+    writer: &mut impl Write,
+    results: &[SearchResult],
+    time_format: TimeFormat,
+) -> Result<()> {
+    for result in results {
+        if let Some(snapshot) = result.metadata.snapshot.as_ref() {
+            let size_str = format_size(snapshot.len);
+            let time_str = snapshot
+                .modified_unix_millis
+                .and_then(|millis| chrono::TimeZone::timestamp_millis_opt(&Local, millis).single())
+                .map(|modified| format_timestamp(modified, time_format))
+                .unwrap_or_else(|| "-".to_string());
+
+            writeln!(
+                writer,
+                "{:<12} {:>8} {} {}",
+                snapshot.permissions_display,
+                size_str,
+                time_str,
+                display_path_text(&result.path)
+            )?;
+            continue;
+        }
+
+        let path = std::slice::from_ref(&result.path);
+        print_find_paths(&RealFsSearchBackend, writer, path, time_format)?;
     }
     Ok(())
 }

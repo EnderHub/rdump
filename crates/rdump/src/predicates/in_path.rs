@@ -20,15 +20,14 @@ impl PredicateEvaluator for InPathEvaluator {
         {
             let glob = Glob::new(value)?.compile_matcher();
             let relative_path = context
-                .path
-                .strip_prefix(&context.root)
-                .unwrap_or(&context.path);
+                .root_relative_path()
+                .unwrap_or(context.resolved_path());
             if glob.is_match(relative_path) {
                 return Ok(MatchResult::Boolean(true));
             }
 
-            if let Some(parent) = context.path.parent() {
-                let relative_parent = parent.strip_prefix(&context.root).unwrap_or(parent);
+            if let Some(parent) = context.resolved_path().parent() {
+                let relative_parent = parent.strip_prefix(context.root_path()).unwrap_or(parent);
                 Ok(MatchResult::Boolean(glob.is_match(relative_parent)))
             } else {
                 Ok(MatchResult::Boolean(false))
@@ -39,21 +38,23 @@ impl PredicateEvaluator for InPathEvaluator {
             let absolute_target_dir = if target_dir.is_absolute() {
                 target_dir
             } else {
-                context.root.join(target_dir)
+                context.root_path().join(target_dir)
             };
 
-            if !absolute_target_dir.is_dir() {
+            let canonical_target = match context.normalized_path(&absolute_target_dir) {
+                Ok(identity) => identity.resolved_path,
+                Err(_) => return Ok(MatchResult::Boolean(false)),
+            };
+            let Ok(target_metadata) = context.backend().stat(&canonical_target) else {
+                return Ok(MatchResult::Boolean(false));
+            };
+            if target_metadata.file_type != crate::backend::BackendFileType::Directory {
                 return Ok(MatchResult::Boolean(false));
             }
 
-            let canonical_target = match dunce::canonicalize(&absolute_target_dir) {
-                Ok(path) => path,
-                Err(_) => return Ok(MatchResult::Boolean(false)),
-            };
-
-            if let Some(file_parent) = context.path.parent() {
-                let canonical_file_parent = match dunce::canonicalize(file_parent) {
-                    Ok(path) => path,
+            if let Some(file_parent) = context.resolved_path().parent() {
+                let canonical_file_parent = match context.normalized_path(file_parent) {
+                    Ok(identity) => identity.resolved_path,
                     Err(_) => return Ok(MatchResult::Boolean(false)),
                 };
                 Ok(MatchResult::Boolean(

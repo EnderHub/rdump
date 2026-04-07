@@ -57,6 +57,7 @@ struct SearchProgressEmitter {
 
 #[derive(Clone)]
 pub struct RdumpServer {
+    search_runtime: rdump::SearchRuntime,
     search_semaphore: Arc<Semaphore>,
     search_sessions: Arc<Mutex<HashMap<String, CachedSearchSession>>>,
     progress_sinks: Arc<Mutex<HashMap<String, SearchProgressSink>>>,
@@ -67,7 +68,18 @@ pub struct RdumpServer {
 
 impl Default for RdumpServer {
     fn default() -> Self {
+        Self::with_search_runtime(rdump::SearchRuntime::real_fs())
+    }
+}
+
+impl RdumpServer {
+    /// Constructs an MCP server bound to a caller-supplied search runtime.
+    ///
+    /// Use this when integrating `rdump` with a virtual workspace backend
+    /// rather than the default host filesystem.
+    pub fn with_search_runtime(search_runtime: rdump::SearchRuntime) -> Self {
         Self {
+            search_runtime,
             search_semaphore: Arc::new(Semaphore::new(default_max_concurrent_searches())),
             search_sessions: Arc::new(Mutex::new(HashMap::new())),
             progress_sinks: Arc::new(Mutex::new(HashMap::new())),
@@ -76,9 +88,6 @@ impl Default for RdumpServer {
             max_cached_sessions: default_max_cached_sessions(),
         }
     }
-}
-
-impl RdumpServer {
     async fn search_tool(
         &self,
         args: SearchArgs,
@@ -132,11 +141,13 @@ impl RdumpServer {
             .fetch_add(1, Ordering::Relaxed)
             .to_string();
         let pager_session_id = format!("mcp-search-{session_id}");
+        let search_runtime = self.search_runtime.clone();
 
         let response = tokio::task::spawn_blocking(
             move || -> McpResult<(rdump::contracts::SearchResponse, Option<CachedSearchSession>)> {
                 let _permit = permit;
-                let mut pager = rdump::request::SearchRequestPager::new(
+                let mut pager = rdump::request::SearchRequestPager::with_runtime(
+                    search_runtime,
                     &request,
                     pager_session_id,
                     Some(task_cancellation),
@@ -429,8 +440,12 @@ impl RdumpServer {
     fn validate_query_tool(&self, args: ValidateQueryArgs) -> McpResult<ToolResult> {
         let response = match rdump::parser::parse_query(&args.query) {
             Ok(_) => {
-                let explanation =
-                    rdump::explain_query(&args.query, &rdump::SearchOptions::default()).ok();
+                let explanation = rdump::explain_query_with_runtime(
+                    &self.search_runtime,
+                    &args.query,
+                    &rdump::SearchOptions::default(),
+                )
+                .ok();
                 ValidateQueryResponse {
                     schema_version: crate::types::SCHEMA_VERSION.to_string(),
                     valid: true,
@@ -492,7 +507,7 @@ impl RdumpServer {
             presets: args.presets,
             ..Default::default()
         };
-        match rdump::explain_query(&args.query, &options) {
+        match rdump::explain_query_with_runtime(&self.search_runtime, &args.query, &options) {
             Ok(response) => {
                 let text = format!(
                     "Effective query: {}\nEstimated cost: {}\nStages: {}",
@@ -1025,4 +1040,313 @@ fn parse_args<T: DeserializeOwned>(args: Value) -> McpResult<T> {
 
     serde_json::from_value(args)
         .map_err(|err| McpError::invalid_params(format!("Invalid arguments: {err}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::{anyhow, Result};
+    use rdump::backend::{
+        BackendFileType, BackendMetadata, BackendPathIdentity, DiscoveryReport, DiscoveryRequest,
+        SearchBackend,
+    };
+    use rdump::contracts::{LimitValue, Limits, OutputMode, SearchItem, SearchResponse};
+    use std::collections::BTreeMap;
+    use std::path::{Path, PathBuf};
+
+    #[derive(Debug)]
+    struct FakeBackend {
+        root: PathBuf,
+        files: BTreeMap<PathBuf, (Vec<u8>, BackendMetadata)>,
+    }
+
+    impl FakeBackend {
+        fn new(root: PathBuf, files: impl IntoIterator<Item = (PathBuf, Vec<u8>)>) -> Self {
+            let files = files
+                .into_iter()
+                .map(|(relative, bytes)| {
+                    let metadata = BackendMetadata {
+                        size_bytes: bytes.len() as u64,
+                        modified_unix_millis: Some(1_700_000_000_000),
+                        readonly: false,
+                        permissions_display: "-rw-r--r--".to_string(),
+                        file_type: BackendFileType::File,
+                        stable_token: Some(format!("token:{}", relative.display())),
+                        device_id: None,
+                        inode: None,
+                    };
+                    (relative, (bytes, metadata))
+                })
+                .collect();
+            Self { root, files }
+        }
+
+        fn relative_key(&self, path: &Path) -> Result<PathBuf> {
+            if let Ok(relative) = path.strip_prefix(&self.root) {
+                return Ok(relative.to_path_buf());
+            }
+            if self.files.contains_key(path) {
+                return Ok(path.to_path_buf());
+            }
+            Err(anyhow!("unknown virtual path {}", path.display()))
+        }
+    }
+
+    impl SearchBackend for FakeBackend {
+        fn normalize_root(&self, root: &Path) -> Result<PathBuf> {
+            if root == self.root {
+                Ok(self.root.clone())
+            } else {
+                Err(anyhow!("unexpected root {}", root.display()))
+            }
+        }
+
+        fn discover(&self, request: &DiscoveryRequest) -> Result<DiscoveryReport> {
+            if request.root != self.root {
+                return Err(anyhow!("unexpected root {}", request.root.display()));
+            }
+
+            let candidates = self
+                .files
+                .keys()
+                .cloned()
+                .map(|relative| BackendPathIdentity {
+                    display_path: relative.clone(),
+                    resolved_path: self.root.join(&relative),
+                    root_relative_path: Some(relative),
+                    resolution: rdump::PathResolution::Canonical,
+                })
+                .collect();
+
+            Ok(DiscoveryReport {
+                candidates,
+                ..Default::default()
+            })
+        }
+
+        fn normalize_path(
+            &self,
+            root: &Path,
+            _display_root: &Path,
+            path: &Path,
+        ) -> Result<BackendPathIdentity> {
+            if root != self.root {
+                return Err(anyhow!("unexpected root {}", root.display()));
+            }
+            let relative = self.relative_key(path)?;
+            Ok(BackendPathIdentity {
+                display_path: relative.clone(),
+                resolved_path: self.root.join(&relative),
+                root_relative_path: Some(relative),
+                resolution: rdump::PathResolution::Canonical,
+            })
+        }
+
+        fn stat(&self, path: &Path) -> Result<BackendMetadata> {
+            let relative = self.relative_key(path)?;
+            self.files
+                .get(&relative)
+                .map(|(_, metadata)| metadata.clone())
+                .ok_or_else(|| anyhow!("missing metadata for {}", path.display()))
+        }
+
+        fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+            let relative = self.relative_key(path)?;
+            self.files
+                .get(&relative)
+                .map(|(bytes, _)| bytes.clone())
+                .ok_or_else(|| anyhow!("missing content for {}", path.display()))
+        }
+    }
+
+    fn decode_response(result: ToolResult) -> SearchResponse {
+        serde_json::from_value(
+            result
+                .structured_content
+                .expect("search tool should emit structured content"),
+        )
+        .expect("structured content should decode as SearchResponse")
+    }
+
+    #[tokio::test]
+    async fn search_tool_uses_supplied_runtime_across_continuation_pages() {
+        let root = PathBuf::from("/virtual");
+        let runtime = rdump::SearchRuntime::with_backend(Arc::new(FakeBackend::new(
+            root.clone(),
+            [
+                (PathBuf::from("a.txt"), b"hello from a\n".to_vec()),
+                (PathBuf::from("b.txt"), b"hello from b\n".to_vec()),
+            ],
+        )));
+        let server = RdumpServer::with_search_runtime(runtime);
+
+        let first = decode_response(
+            server
+                .search_tool(
+                    crate::types::SearchArgs {
+                        query: Some("contains:hello".to_string()),
+                        root: Some(root.display().to_string()),
+                        presets: None,
+                        no_ignore: None,
+                        hidden: None,
+                        max_depth: None,
+                        sql_dialect: None,
+                        sql_strict: None,
+                        output: Some(OutputMode::Paths),
+                        limits: Some(Limits {
+                            max_results: LimitValue::Value(1),
+                            max_matches_per_file: LimitValue::Unlimited,
+                            max_bytes_per_file: LimitValue::Unlimited,
+                            max_total_bytes: LimitValue::Unlimited,
+                            max_match_bytes: LimitValue::Unlimited,
+                            max_snippet_bytes: LimitValue::Unlimited,
+                            max_errors: LimitValue::Unlimited,
+                        }),
+                        context_lines: None,
+                        error_mode: None,
+                        skip_errors: None,
+                        execution_budget_ms: None,
+                        semantic_budget_ms: None,
+                        max_semantic_matches_per_file: None,
+                        language_override: None,
+                        semantic_match_mode: None,
+                        snippet_mode: None,
+                        semantic_strict: None,
+                        strict_path_resolution: None,
+                        snapshot_drift_detection: None,
+                        ignore_debug: None,
+                        language_debug: None,
+                        sql_trace: None,
+                        execution_profile: None,
+                        offset: None,
+                        continuation_token: None,
+                        path_display: None,
+                        line_endings: None,
+                        include_match_text: None,
+                    },
+                    None,
+                )
+                .await
+                .expect("first page should succeed"),
+        );
+
+        assert_eq!(first.results.len(), 1);
+        let SearchItem::Path {
+            path,
+            fingerprint,
+            file,
+            ..
+        } = &first.results[0]
+        else {
+            panic!("expected path item");
+        };
+        assert_eq!(path, "a.txt");
+        assert_eq!(fingerprint, "token:a.txt");
+        assert_eq!(file.resolved_path, "/virtual/a.txt");
+        let continuation = first
+            .continuation_token
+            .clone()
+            .expect("first page should produce continuation token");
+
+        let second = decode_response(
+            server
+                .search_tool(
+                    crate::types::SearchArgs {
+                        query: None,
+                        root: None,
+                        presets: None,
+                        no_ignore: None,
+                        hidden: None,
+                        max_depth: None,
+                        sql_dialect: None,
+                        sql_strict: None,
+                        output: None,
+                        limits: None,
+                        context_lines: None,
+                        error_mode: None,
+                        skip_errors: None,
+                        execution_budget_ms: None,
+                        semantic_budget_ms: None,
+                        max_semantic_matches_per_file: None,
+                        language_override: None,
+                        semantic_match_mode: None,
+                        snippet_mode: None,
+                        semantic_strict: None,
+                        strict_path_resolution: None,
+                        snapshot_drift_detection: None,
+                        ignore_debug: None,
+                        language_debug: None,
+                        sql_trace: None,
+                        execution_profile: None,
+                        offset: None,
+                        continuation_token: Some(continuation),
+                        path_display: None,
+                        line_endings: None,
+                        include_match_text: None,
+                    },
+                    None,
+                )
+                .await
+                .expect("continuation page should succeed"),
+        );
+
+        assert_eq!(second.results.len(), 1);
+        let SearchItem::Path {
+            path, fingerprint, ..
+        } = &second.results[0]
+        else {
+            panic!("expected path item");
+        };
+        assert_eq!(path, "b.txt");
+        assert_eq!(fingerprint, "token:b.txt");
+        let final_token = second
+            .continuation_token
+            .clone()
+            .expect("second page should retain a terminal continuation probe");
+
+        let terminal = decode_response(
+            server
+                .search_tool(
+                    crate::types::SearchArgs {
+                        query: None,
+                        root: None,
+                        presets: None,
+                        no_ignore: None,
+                        hidden: None,
+                        max_depth: None,
+                        sql_dialect: None,
+                        sql_strict: None,
+                        output: None,
+                        limits: None,
+                        context_lines: None,
+                        error_mode: None,
+                        skip_errors: None,
+                        execution_budget_ms: None,
+                        semantic_budget_ms: None,
+                        max_semantic_matches_per_file: None,
+                        language_override: None,
+                        semantic_match_mode: None,
+                        snippet_mode: None,
+                        semantic_strict: None,
+                        strict_path_resolution: None,
+                        snapshot_drift_detection: None,
+                        ignore_debug: None,
+                        language_debug: None,
+                        sql_trace: None,
+                        execution_profile: None,
+                        offset: None,
+                        continuation_token: Some(final_token),
+                        path_display: None,
+                        line_endings: None,
+                        include_match_text: None,
+                    },
+                    None,
+                )
+                .await
+                .expect("terminal continuation page should succeed"),
+        );
+
+        assert!(terminal.results.is_empty());
+        assert!(terminal.continuation_token.is_none());
+    }
 }

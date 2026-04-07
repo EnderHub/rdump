@@ -31,9 +31,16 @@ fn search_help_mentions_error_modes_and_budgets() {
 #[test]
 fn readme_mentions_current_query_and_config_commands() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let readme = manifest_dir.parent().unwrap().parent().unwrap().join("README.md");
+    let readme = manifest_dir
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("README.md");
     let text = fs::read_to_string(readme).unwrap();
 
     assert!(text.contains("rdump query explain") || text.contains("query explain"));
     assert!(text.contains("rdump config show") || text.contains("config show"));
+    assert!(text.contains("SearchRuntime::with_backend"));
+    assert!(text.contains("SearchBackend"));
 }

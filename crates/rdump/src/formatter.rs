@@ -5,23 +5,136 @@ mod report;
 #[path = "formatter/shared.rs"]
 mod shared;
 
-pub use raw::print_output;
-pub use report::{print_path_output, print_report_output};
+pub use raw::{print_output, print_output_with_backend};
+pub use report::{
+    print_contract_path_items, print_path_output, print_path_output_with_backend,
+    print_report_output,
+};
 pub(crate) use shared::format_mode;
 
 #[cfg(test)]
-pub(crate) use shared::{format_size, get_contextual_line_ranges};
+pub(crate) use shared::get_contextual_line_ranges;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::{
+        BackendFileType, BackendMetadata, BackendPathIdentity, DiscoveryReport, DiscoveryRequest,
+        SearchBackend,
+    };
+    use crate::formatter::shared::format_size;
     use crate::{
         ContentState, Match, SearchReport, SearchResult, SearchResultMetadata, SearchStats,
     };
+    use anyhow::{anyhow, Result};
+    use std::collections::BTreeMap;
     use std::io::Write;
     use std::ops::Range;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use tempfile::NamedTempFile;
+
+    #[derive(Debug)]
+    struct FakeBackend {
+        root: PathBuf,
+        files: BTreeMap<PathBuf, BackendMetadata>,
+    }
+
+    impl FakeBackend {
+        fn new(root: PathBuf, files: impl IntoIterator<Item = PathBuf>) -> Self {
+            let files = files
+                .into_iter()
+                .map(|relative| {
+                    (
+                        relative.clone(),
+                        BackendMetadata {
+                            size_bytes: 12,
+                            modified_unix_millis: Some(1_700_000_000_000),
+                            readonly: false,
+                            permissions_display: "-rw-r--r--".to_string(),
+                            file_type: BackendFileType::File,
+                            stable_token: Some(format!("token:{}", relative.display())),
+                            device_id: None,
+                            inode: None,
+                        },
+                    )
+                })
+                .collect();
+            Self { root, files }
+        }
+
+        fn relative_key(&self, path: &Path) -> Result<PathBuf> {
+            if let Ok(relative) = path.strip_prefix(&self.root) {
+                return Ok(relative.to_path_buf());
+            }
+            if self.files.contains_key(path) {
+                return Ok(path.to_path_buf());
+            }
+            Err(anyhow!("unknown virtual path {}", path.display()))
+        }
+    }
+
+    impl SearchBackend for FakeBackend {
+        fn normalize_root(&self, root: &Path) -> Result<PathBuf> {
+            if root == self.root {
+                Ok(self.root.clone())
+            } else {
+                Err(anyhow!("unexpected root {}", root.display()))
+            }
+        }
+
+        fn discover(&self, request: &DiscoveryRequest) -> Result<DiscoveryReport> {
+            if request.root != self.root {
+                return Err(anyhow!("unexpected root {}", request.root.display()));
+            }
+            let candidates = self
+                .files
+                .keys()
+                .cloned()
+                .map(|relative| BackendPathIdentity {
+                    display_path: relative.clone(),
+                    resolved_path: self.root.join(&relative),
+                    root_relative_path: Some(relative),
+                    resolution: crate::PathResolution::Canonical,
+                })
+                .collect();
+            Ok(DiscoveryReport {
+                candidates,
+                ..Default::default()
+            })
+        }
+
+        fn normalize_path(
+            &self,
+            root: &Path,
+            _display_root: &Path,
+            path: &Path,
+        ) -> Result<BackendPathIdentity> {
+            if root != self.root {
+                return Err(anyhow!("unexpected root {}", root.display()));
+            }
+            let relative = self.relative_key(path)?;
+            Ok(BackendPathIdentity {
+                display_path: relative.clone(),
+                resolved_path: self.root.join(&relative),
+                root_relative_path: Some(relative),
+                resolution: crate::PathResolution::Canonical,
+            })
+        }
+
+        fn stat(&self, path: &Path) -> Result<BackendMetadata> {
+            let relative = self.relative_key(path)?;
+            self.files
+                .get(&relative)
+                .cloned()
+                .ok_or_else(|| anyhow!("missing metadata for {}", path.display()))
+        }
+
+        fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+            let _ = self.relative_key(path)?;
+            Ok(b"placeholder".to_vec())
+        }
+    }
 
     fn create_temp_file_with_content(content: &str) -> NamedTempFile {
         let mut file = NamedTempFile::new().unwrap();
@@ -160,6 +273,27 @@ mod tests {
         let output = String::from_utf8(writer).unwrap();
         assert!(output.contains("```"));
         assert!(!output.contains("\x1b["));
+    }
+
+    #[test]
+    fn test_report_path_output_with_backend() {
+        let backend = Arc::new(FakeBackend::new(
+            PathBuf::from("/virtual"),
+            [PathBuf::from("src/lib.rs")],
+        ));
+        let mut writer = Vec::new();
+        print_path_output_with_backend(
+            backend.as_ref(),
+            &mut writer,
+            &[PathBuf::from("/virtual/src/lib.rs")],
+            &crate::Format::Find,
+            crate::TimeFormat::Local,
+        )
+        .unwrap();
+
+        let output = String::from_utf8(writer).unwrap();
+        assert!(output.contains("-rw-r--r--"));
+        assert!(output.contains("/virtual/src/lib.rs"));
     }
 
     #[test]

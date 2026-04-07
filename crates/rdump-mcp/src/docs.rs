@@ -114,6 +114,69 @@ pub fn build_sdk_reference() -> SdkReference {
             description: "Explains preset expansion, predicate classes, and evaluation stages."
                 .to_string(),
         },
+        FunctionDoc {
+            name: "SearchRuntime::with_backend".to_string(),
+            signature:
+                "SearchRuntime::with_backend(backend: Arc<dyn SearchBackend>) -> SearchRuntime"
+                    .to_string(),
+            description:
+                "Constructs a runtime backed by a custom filesystem or virtual-workspace adapter."
+                    .to_string(),
+        },
+        FunctionDoc {
+            name: "execute_search_request_with_runtime".to_string(),
+            signature:
+                "execute_search_request_with_runtime(runtime: SearchRuntime, request: &SearchRequest) -> Result<SearchResponse>"
+                    .to_string(),
+            description:
+                "Runs contract/request searches against a caller-supplied backend runtime."
+                    .to_string(),
+        },
+        FunctionDoc {
+            name: "execute_search_request_with_runtime_and_progress".to_string(),
+            signature:
+                "execute_search_request_with_runtime_and_progress(runtime: SearchRuntime, request: &SearchRequest, progress: impl FnMut(&ProgressEvent)) -> Result<SearchResponse>"
+                    .to_string(),
+            description:
+                "Runs contract/request searches against a caller-supplied backend runtime and emits progress events."
+                    .to_string(),
+        },
+        FunctionDoc {
+            name: "execute_search_request_with_runtime_and_cancellation".to_string(),
+            signature:
+                "execute_search_request_with_runtime_and_cancellation(runtime: SearchRuntime, request: &SearchRequest, cancellation: Option<SearchCancellationToken>, session_id: &str, progress: impl FnMut(&ProgressEvent)) -> Result<SearchResponse>"
+                    .to_string(),
+            description:
+                "Runs contract/request searches against a caller-supplied backend runtime with explicit cancellation and session identity."
+                    .to_string(),
+        },
+        FunctionDoc {
+            name: "repo_language_inventory_with_runtime".to_string(),
+            signature:
+                "repo_language_inventory_with_runtime(runtime: &SearchRuntime, options: &SearchOptions) -> Vec<RepoLanguageCount>"
+                    .to_string(),
+            description:
+                "Builds planner/preflight language inventory against a caller-supplied backend runtime."
+                    .to_string(),
+        },
+        FunctionDoc {
+            name: "search_async_with_runtime".to_string(),
+            signature:
+                "search_async_with_runtime(runtime: SearchRuntime, query: &str, options: SearchOptions) -> Result<SearchAsyncStream>"
+                    .to_string(),
+            description:
+                "Starts async streaming search against a caller-supplied backend runtime."
+                    .to_string(),
+        },
+        FunctionDoc {
+            name: "search_async_with_runtime_and_progress".to_string(),
+            signature:
+                "search_async_with_runtime_and_progress(runtime: SearchRuntime, query: &str, options: SearchOptions, progress: impl FnMut(ProgressEvent) + Send + 'static) -> Result<SearchAsyncStream>"
+                    .to_string(),
+            description:
+                "Starts async streaming search against a caller-supplied backend runtime and emits progress events."
+                    .to_string(),
+        },
     ];
 
     let search_options_fields = vec![
@@ -217,6 +280,157 @@ pub fn build_sdk_reference() -> SdkReference {
             fields: search_options_fields,
         },
         TypeDoc {
+            name: "SearchRuntime".to_string(),
+            description:
+                "Backend-bound search session wrapper for real filesystems or virtual workspaces."
+                    .to_string(),
+            fields: vec![],
+        },
+        TypeDoc {
+            name: "SearchBackend".to_string(),
+            description:
+                "Trait implemented by real-fs or virtual-workspace adapters that provide discovery, normalization, metadata, and bytes."
+                    .to_string(),
+            fields: vec![
+                FieldDoc {
+                    name: "normalize_root(...)".to_string(),
+                    description:
+                        "Normalizes a caller-supplied root into a backend-stable root path."
+                            .to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "discover(...)".to_string(),
+                    description:
+                        "Enumerates candidate files and skip diagnostics for one search session."
+                            .to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "normalize_path(...)".to_string(),
+                    description:
+                        "Converts a display or resolved path into backend-normalized identity."
+                            .to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "stat(...)".to_string(),
+                    description:
+                        "Returns backend metadata used for predicates, snapshots, and formatters."
+                            .to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "read_bytes(...)".to_string(),
+                    description:
+                        "Returns raw file bytes for content loading and semantic evaluation."
+                            .to_string(),
+                    default: "".to_string(),
+                },
+            ],
+        },
+        TypeDoc {
+            name: "DiscoveryRequest".to_string(),
+            description:
+                "Search-oriented discovery input passed to SearchBackend::discover(...)."
+                    .to_string(),
+            fields: vec![
+                FieldDoc {
+                    name: "root".to_string(),
+                    description: "Normalized backend root for candidate enumeration.".to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "display_root".to_string(),
+                    description: "Caller-facing root projection used for display paths.".to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "no_ignore".to_string(),
+                    description: "Disables ignore-file filtering when true.".to_string(),
+                    default: "false".to_string(),
+                },
+                FieldDoc {
+                    name: "hidden".to_string(),
+                    description: "Includes hidden files when true.".to_string(),
+                    default: "false".to_string(),
+                },
+            ],
+        },
+        TypeDoc {
+            name: "DiscoveryReport".to_string(),
+            description:
+                "Candidate file identities and skip counters returned by backend discovery."
+                    .to_string(),
+            fields: vec![
+                FieldDoc {
+                    name: "candidates".to_string(),
+                    description: "Backend-normalized file identities eligible for evaluation."
+                        .to_string(),
+                    default: "[]".to_string(),
+                },
+                FieldDoc {
+                    name: "diagnostics".to_string(),
+                    description: "Discovery-time warnings or errors.".to_string(),
+                    default: "[]".to_string(),
+                },
+            ],
+        },
+        TypeDoc {
+            name: "BackendPathIdentity".to_string(),
+            description:
+                "Stable backend path identity used for display, resolution, and root-relative projections."
+                    .to_string(),
+            fields: vec![
+                FieldDoc {
+                    name: "display_path".to_string(),
+                    description: "Caller-facing path projection.".to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "resolved_path".to_string(),
+                    description: "Backend-stable resolved path, not necessarily a host canonical path."
+                        .to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "root_relative_path".to_string(),
+                    description: "Path relative to the backend root when available.".to_string(),
+                    default: "None".to_string(),
+                },
+            ],
+        },
+        TypeDoc {
+            name: "BackendMetadata".to_string(),
+            description:
+                "Backend-neutral metadata used by predicates, snapshots, request payloads, and formatters."
+                    .to_string(),
+            fields: vec![
+                FieldDoc {
+                    name: "size_bytes".to_string(),
+                    description: "File length in bytes.".to_string(),
+                    default: "0".to_string(),
+                },
+                FieldDoc {
+                    name: "modified_unix_millis".to_string(),
+                    description: "Last-modified timestamp when available.".to_string(),
+                    default: "None".to_string(),
+                },
+                FieldDoc {
+                    name: "permissions_display".to_string(),
+                    description: "Human-readable permissions string.".to_string(),
+                    default: "".to_string(),
+                },
+                FieldDoc {
+                    name: "stable_token".to_string(),
+                    description:
+                        "Optional backend-supplied stable identity token for drift detection and fingerprints."
+                            .to_string(),
+                    default: "None".to_string(),
+                },
+            ],
+        },
+        TypeDoc {
             name: "SearchResult".to_string(),
             description: "Result for a matched file.".to_string(),
             fields: result_fields,
@@ -269,6 +483,7 @@ pub fn build_sdk_reference() -> SdkReference {
     let notes = vec![
         "Use search_iter for large repos to avoid loading all results at once.",
         "Use search_path_iter/search_paths when you only need matching file paths.",
+        "Implement SearchBackend in external adapters when you need rdump to search a virtual workspace.",
         "Use explain_query to inspect preset expansion and evaluation stages before running a search.",
         "RQL supports logical operators &, |, ! and parentheses.",
     ]
@@ -463,6 +678,15 @@ mod tests {
         let reference = build_sdk_reference();
         let has_search_options = reference.types.iter().any(|ty| ty.name == "SearchOptions");
         assert!(has_search_options);
+        let has_search_runtime = reference.types.iter().any(|ty| ty.name == "SearchRuntime");
+        assert!(has_search_runtime);
+        let has_search_backend = reference.types.iter().any(|ty| ty.name == "SearchBackend");
+        assert!(has_search_backend);
+        let has_backend_metadata = reference
+            .types
+            .iter()
+            .any(|ty| ty.name == "BackendMetadata");
+        assert!(has_backend_metadata);
     }
 
     #[test]
@@ -508,6 +732,13 @@ mod tests {
             "search_path_iter",
             "search_paths",
             "explain_query",
+            "SearchRuntime::with_backend",
+            "execute_search_request_with_runtime",
+            "execute_search_request_with_runtime_and_progress",
+            "execute_search_request_with_runtime_and_cancellation",
+            "repo_language_inventory_with_runtime",
+            "search_async_with_runtime",
+            "search_async_with_runtime_and_progress",
         ] {
             assert!(function_names.contains(&expected));
         }

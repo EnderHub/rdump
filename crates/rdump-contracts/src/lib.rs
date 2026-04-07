@@ -51,23 +51,37 @@ pub enum ResultKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PathResolution {
+    /// The backend supplied its preferred normalized identity path.
+    ///
+    /// For the real filesystem this is typically canonical, but virtual
+    /// backends may still use `canonical` for a stable non-host path.
     Canonical,
+    /// The backend could not provide its preferred normalized identity path and
+    /// fell back to a less-stable projection.
     Fallback,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct FileIdentity {
+    /// User-facing path projection for the active backend.
     pub display_path: String,
+    /// Backend-stable identity path.
+    ///
+    /// This is not required to be a host-filesystem canonical path.
     pub resolved_path: String,
+    /// Path relative to the backend root when available.
     pub root_relative_path: Option<String>,
     pub resolution: PathResolution,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PathMetadata {
+    /// File size in bytes reported by the active backend.
     pub size_bytes: u64,
+    /// Last-modified timestamp when the backend can provide one.
     pub modified_unix_millis: Option<i64>,
     pub readonly: bool,
+    /// Human-readable permissions summary from the active backend.
     pub permissions_display: String,
 }
 

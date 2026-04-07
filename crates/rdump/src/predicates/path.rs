@@ -17,37 +17,25 @@ impl PredicateEvaluator for PathEvaluator {
         if let PredicateKey::PathExact = key {
             let mut expected = PathBuf::from(value);
             if expected.is_relative() {
-                expected = context.root.join(expected);
+                expected = context.root_path().join(expected);
             }
-
-            let normalized_expected = expected.canonicalize().unwrap_or_else(|_| expected.clone());
-            let normalized_actual = context
-                .path
-                .canonicalize()
-                .unwrap_or_else(|_| context.path.clone());
+            let normalized_expected = context
+                .normalized_path(&expected)
+                .map(|identity| identity.resolved_path)
+                .unwrap_or(expected);
 
             return Ok(MatchResult::Boolean(
-                normalized_actual == normalized_expected,
+                context.resolved_path() == normalized_expected.as_path(),
             ));
         }
 
         let relative_path = context
-            .path
-            .strip_prefix(&context.root)
-            .map(|p| p.to_path_buf())
-            .or_else(|_| {
-                let canonical_root =
-                    dunce::canonicalize(&context.root).unwrap_or_else(|_| context.root.clone());
-                let canonical_path =
-                    dunce::canonicalize(&context.path).unwrap_or_else(|_| context.path.clone());
-                canonical_path
-                    .strip_prefix(&canonical_root)
-                    .map(|p| p.to_path_buf())
-            })
-            .unwrap_or_else(|_| context.path.clone());
+            .root_relative_path()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| context.resolved_path().to_path_buf());
 
         let path_str = relative_path.to_string_lossy();
-        let absolute_path_str = context.path.to_string_lossy();
+        let absolute_path_str = context.resolved_path().to_string_lossy();
         let value_path = std::path::Path::new(value);
         let use_absolute = value_path.is_absolute();
 

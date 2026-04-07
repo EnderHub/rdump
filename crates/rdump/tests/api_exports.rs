@@ -1,12 +1,16 @@
 use clap::Parser;
 use rdump::commands::search::search_request_from_args;
 use rdump::{
-    capability_metadata, execute_search_request, search, search_iter, search_options_from_request,
-    Cli, ColorChoice, Commands, ConfigAction, ConfigArgs, Format, LangAction, LangArgs, Match,
-    PresetAction, PresetArgs, QueryAction, QueryArgs, SearchArgs, SearchOptions, SearchResult,
-    SearchResultMetadata, SqlDialect, SqlDialectFlag,
+    capability_metadata, execute_search_request,
+    execute_search_request_with_runtime_and_cancellation,
+    execute_search_request_with_runtime_and_progress, repo_language_inventory_with_runtime, search,
+    search_iter, search_options_from_request, Cli, ColorChoice, Commands, ConfigAction, ConfigArgs,
+    Format, LangAction, LangArgs, Match, PresetAction, PresetArgs, QueryAction, QueryArgs,
+    RealFsSearchBackend, SearchArgs, SearchCancellationToken, SearchOptions, SearchResult,
+    SearchResultMetadata, SearchRuntime, SqlDialect, SqlDialectFlag,
 };
 use std::path::PathBuf;
+use std::sync::Arc;
 use tempfile::tempdir;
 
 #[test]
@@ -26,6 +30,25 @@ fn library_exports_accessible_from_crate_root() {
         assert!(iter.remaining() <= max);
     }
     let results = search("ext:rs", options).expect("search reachable");
+    let runtime = SearchRuntime::with_backend(Arc::new(RealFsSearchBackend));
+    let runtime_results = runtime
+        .search(
+            "ext:rs",
+            &SearchOptions {
+                root: tmp.path().to_path_buf(),
+                ..Default::default()
+            },
+        )
+        .expect("runtime search reachable");
+    assert_eq!(runtime_results.len(), results.len());
+    let inventory = repo_language_inventory_with_runtime(
+        &runtime,
+        &SearchOptions {
+            root: tmp.path().to_path_buf(),
+            ..Default::default()
+        },
+    );
+    assert!(inventory.iter().any(|entry| entry.extension == "rs"));
 
     let sample_match = Match {
         start_line: 1,
@@ -47,6 +70,28 @@ fn library_exports_accessible_from_crate_root() {
     assert!(!sample_result.is_whole_file_match());
     assert_eq!(sample_result.match_count(), 1);
     let _ = results; // ensure collection is usable
+    let mut writer = Vec::new();
+    rdump::formatter::print_output_with_backend(
+        &RealFsSearchBackend,
+        &mut writer,
+        &[(tmp.path().join("example.rs"), vec![])],
+        &Format::Paths,
+        false,
+        false,
+        false,
+        0,
+        rdump::TimeFormat::Local,
+    )
+    .expect("backend-aware raw formatter reachable");
+    let mut path_writer = Vec::new();
+    rdump::formatter::print_path_output_with_backend(
+        &RealFsSearchBackend,
+        &mut path_writer,
+        &[tmp.path().join("example.rs")],
+        &Format::Paths,
+        rdump::TimeFormat::Local,
+    )
+    .expect("backend-aware report path formatter reachable");
 
     let dialects = [
         SqlDialect::Generic,
@@ -82,6 +127,17 @@ fn cli_exports_and_flags_remain_public() {
     };
     let _ = search_options_from_request(&request);
     let _ = execute_search_request(&request).expect("request execution stays available");
+    let runtime = SearchRuntime::with_backend(Arc::new(RealFsSearchBackend));
+    let _ = execute_search_request_with_runtime_and_progress(runtime.clone(), &request, |_| {})
+        .expect("runtime request execution with progress stays available");
+    let _ = execute_search_request_with_runtime_and_cancellation(
+        runtime,
+        &request,
+        Some(SearchCancellationToken::new()),
+        "api-exports",
+        |_| {},
+    )
+    .expect("runtime request execution with cancellation stays available");
     let _ = capability_metadata();
 
     let _format = Format::Hunks;
@@ -106,7 +162,16 @@ fn cli_exports_and_flags_remain_public() {
 #[cfg(feature = "async")]
 #[test]
 fn async_exports_available_when_feature_enabled() {
-    use rdump::{search_all_async, search_async};
+    use rdump::{
+        search_all_async, search_all_async_with_runtime, search_async, search_async_with_runtime,
+        search_async_with_runtime_and_progress,
+    };
     let _ = search_async;
     let _ = search_all_async;
+    let runtime = SearchRuntime::with_backend(Arc::new(RealFsSearchBackend));
+    let options = SearchOptions::default();
+    let _unused_stream = search_async_with_runtime(runtime.clone(), "ext:rs", options.clone());
+    let _unused_collect = search_all_async_with_runtime(runtime.clone(), "ext:rs", options.clone());
+    let _unused_progress_stream =
+        search_async_with_runtime_and_progress(runtime, "ext:rs", options, |_| {});
 }

@@ -1,15 +1,13 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, Local};
+use chrono::Local;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::io::Write;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use tree_sitter::Range;
 
+use crate::backend::{RealFsSearchBackend, SearchBackend};
 use crate::formatter::shared::{
-    display_path_text, format_mode, format_size, format_timestamp, get_contextual_line_ranges,
+    display_path_text, format_size, format_timestamp, get_contextual_line_ranges,
     print_content_with_style, print_markdown_fenced_content, print_plain_content,
 };
 use crate::limits::{is_probably_binary, maybe_contains_secret, MAX_FILE_SIZE};
@@ -31,15 +29,50 @@ pub fn print_output(
     context_lines: usize,
     time_format: TimeFormat,
 ) -> Result<()> {
+    print_output_with_backend(
+        &RealFsSearchBackend,
+        writer,
+        matching_files,
+        format,
+        with_line_numbers,
+        no_headers,
+        use_color,
+        context_lines,
+        time_format,
+    )
+}
+
+pub fn print_output_with_backend(
+    backend: &dyn SearchBackend,
+    writer: &mut impl Write,
+    matching_files: &[(PathBuf, Vec<Range>)],
+    format: &Format,
+    with_line_numbers: bool,
+    no_headers: bool,
+    use_color: bool,
+    context_lines: usize,
+    time_format: TimeFormat,
+) -> Result<()> {
     match format {
-        Format::Find => print_find_format(writer, matching_files, time_format)?,
+        Format::Find => print_find_format(backend, writer, matching_files, time_format)?,
         Format::Paths => print_paths_format(writer, matching_files)?,
-        Format::Json => print_json_format(writer, matching_files)?,
-        Format::Cat => print_cat_format(writer, matching_files, with_line_numbers, use_color)?,
-        Format::Markdown => {
-            print_markdown_format(writer, matching_files, with_line_numbers, !no_headers)?
-        }
+        Format::Json => print_json_format(backend, writer, matching_files)?,
+        Format::Cat => print_cat_format(
+            backend,
+            writer,
+            matching_files,
+            with_line_numbers,
+            use_color,
+        )?,
+        Format::Markdown => print_markdown_format(
+            backend,
+            writer,
+            matching_files,
+            with_line_numbers,
+            !no_headers,
+        )?,
         Format::Hunks => print_hunks_format(
+            backend,
             writer,
             matching_files,
             with_line_numbers,
@@ -52,11 +85,12 @@ pub fn print_output(
     Ok(())
 }
 
-fn read_file_content(path: &Path) -> Result<Option<String>> {
-    let metadata = fs::metadata(path)
+fn read_file_content(backend: &dyn SearchBackend, path: &Path) -> Result<Option<String>> {
+    let metadata = backend
+        .stat(path)
         .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
 
-    if metadata.len() > MAX_FILE_SIZE {
+    if metadata.size_bytes > MAX_FILE_SIZE {
         eprintln!(
             "Skipping {} (exceeds max file size of {} bytes)",
             path.display(),
@@ -65,8 +99,9 @@ fn read_file_content(path: &Path) -> Result<Option<String>> {
         return Ok(None);
     }
 
-    let bytes =
-        fs::read(path).with_context(|| format!("Failed to read file {}", path.display()))?;
+    let bytes = backend
+        .read_bytes(path)
+        .with_context(|| format!("Failed to read file {}", path.display()))?;
 
     if is_probably_binary(&bytes) {
         eprintln!("Skipping binary file {}", path.display());
@@ -87,6 +122,7 @@ fn read_file_content(path: &Path) -> Result<Option<String>> {
 }
 
 fn print_markdown_format(
+    backend: &dyn SearchBackend,
     writer: &mut impl Write,
     matching_files: &[(PathBuf, Vec<Range>)],
     with_line_numbers: bool,
@@ -100,7 +136,7 @@ fn print_markdown_format(
             writeln!(writer, "File: {}", path.display())?;
             writeln!(writer, "---")?;
         }
-        let Some(content) = read_file_content(path)? else {
+        let Some(content) = read_file_content(backend, path)? else {
             continue;
         };
         let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
@@ -110,13 +146,14 @@ fn print_markdown_format(
 }
 
 fn print_cat_format(
+    backend: &dyn SearchBackend,
     writer: &mut impl Write,
     matching_files: &[(PathBuf, Vec<Range>)],
     with_line_numbers: bool,
     use_color: bool,
 ) -> Result<()> {
     for (path, _) in matching_files {
-        let Some(content) = read_file_content(path)? else {
+        let Some(content) = read_file_content(backend, path)? else {
             continue;
         };
         if use_color {
@@ -136,12 +173,13 @@ fn print_cat_format(
 }
 
 fn print_json_format(
+    backend: &dyn SearchBackend,
     writer: &mut impl Write,
     matching_files: &[(PathBuf, Vec<Range>)],
 ) -> Result<()> {
     let mut outputs = Vec::new();
     for (path, _) in matching_files {
-        let Some(content) = read_file_content(path)
+        let Some(content) = read_file_content(backend, path)
             .with_context(|| format!("Failed to read file for final output: {}", path.display()))?
         else {
             continue;
@@ -166,28 +204,26 @@ fn print_paths_format(
 }
 
 fn print_find_format(
+    backend: &dyn SearchBackend,
     writer: &mut impl Write,
     matching_files: &[(PathBuf, Vec<Range>)],
     time_format: TimeFormat,
 ) -> Result<()> {
     for (path, _) in matching_files {
-        let metadata = fs::metadata(path)
+        let metadata = backend
+            .stat(path)
             .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
-        let size = metadata.len();
-        let modified: DateTime<Local> = DateTime::from(metadata.modified()?);
-        let perms = metadata.permissions();
-        #[cfg(unix)]
-        let mode = perms.mode();
-        #[cfg(not(unix))]
-        let mode = 0;
-        let perms_str = format_mode(mode);
-        let size_str = format_size(size);
-        let time_str = format_timestamp(modified, time_format);
+        let size_str = format_size(metadata.size_bytes);
+        let time_str = metadata
+            .modified_unix_millis
+            .and_then(|millis| chrono::TimeZone::timestamp_millis_opt(&Local, millis).single())
+            .map(|modified| format_timestamp(modified, time_format))
+            .unwrap_or_else(|| "-".to_string());
 
         writeln!(
             writer,
             "{:<12} {:>8} {} {}",
-            perms_str,
+            metadata.permissions_display,
             size_str,
             time_str,
             display_path_text(path)
@@ -197,6 +233,7 @@ fn print_find_format(
 }
 
 fn print_hunks_format(
+    backend: &dyn SearchBackend,
     writer: &mut impl Write,
     matching_files: &[(PathBuf, Vec<Range>)],
     with_line_numbers: bool,
@@ -212,7 +249,7 @@ fn print_hunks_format(
             writeln!(writer, "File: {}", path.display())?;
             writeln!(writer, "---")?;
         }
-        let Some(content) = read_file_content(path)? else {
+        let Some(content) = read_file_content(backend, path)? else {
             continue;
         };
         let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");

@@ -51,6 +51,7 @@
 // Declare all our modules
 #[cfg(feature = "async")]
 mod async_api;
+pub mod backend;
 pub mod commands;
 pub mod config;
 pub mod content;
@@ -74,22 +75,30 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 // =============================================================================
 // Library API Exports
 // =============================================================================
 
 pub use crate::planner::{
-    explain_query, repo_language_inventory, serialize_query_ast, simplify_query, PredicatePlan,
+    explain_query, explain_query_with_runtime, repo_language_inventory,
+    repo_language_inventory_with_runtime, serialize_query_ast, simplify_query, PredicatePlan,
     QueryExplanation, QueryPreflight, QueryStage, RepoLanguageCount, StableAstNode,
 };
 /// SQL dialect used for SQL-aware searches; re-exported so callers can configure
 /// dialects without reaching into internal modules.
 pub use crate::predicates::code_aware::SqlDialect;
 #[cfg(feature = "async")]
-pub use async_api::{search_all_async, search_async, search_async_with_progress};
+pub use async_api::{
+    search_all_async, search_all_async_with_runtime, search_async, search_async_with_progress,
+    search_async_with_runtime, search_async_with_runtime_and_progress,
+};
+pub use backend::{
+    BackendFileType, BackendMetadata, BackendPathIdentity, DiscoveryReport, DiscoveryRequest,
+    RealFsSearchBackend, SearchBackend, SearchRuntime,
+};
 pub use execution::{
     default_max_concurrent_searches, search_execution_policy, CancelOnDrop,
     SearchCancellationToken, SearchExecutionPolicy,
@@ -97,8 +106,10 @@ pub use execution::{
 pub use request::{
     capability_metadata, classify_error as classify_contract_error, contract_error,
     default_limits as default_contract_limits, execute_search_request,
-    execute_search_request_with_progress, format_search_text as format_contract_search_text,
-    search_options_from_request,
+    execute_search_request_with_progress, execute_search_request_with_progress_and_cancellation,
+    execute_search_request_with_runtime, execute_search_request_with_runtime_and_cancellation,
+    execute_search_request_with_runtime_and_progress,
+    format_search_text as format_contract_search_text, search_options_from_request,
 };
 
 // Bring our command functions into scope
@@ -109,7 +120,6 @@ use commands::{config::run_config, query::run_query};
 #[cfg(feature = "cli")]
 use commands::{lang::run_lang, preset::run_preset, search::run_search};
 use std::ops::Range;
-use std::time::UNIX_EPOCH;
 use tree_sitter::Range as TsRange;
 
 // =============================================================================
@@ -388,40 +398,34 @@ pub struct FileSnapshot {
     pub modified_unix_millis: Option<i64>,
     pub readonly: bool,
     pub permissions_display: String,
+    pub stable_token: Option<String>,
     pub device_id: Option<u64>,
     pub inode: Option<u64>,
 }
 
 impl FileSnapshot {
-    pub fn from_metadata(metadata: &std::fs::Metadata) -> Self {
-        let readonly = metadata.permissions().readonly();
-        #[cfg(unix)]
-        let permissions_display = crate::formatter::format_mode(metadata.permissions().mode());
-        #[cfg(not(unix))]
-        let permissions_display = if readonly {
-            "readonly".to_string()
-        } else {
-            "readwrite".to_string()
-        };
-
+    /// Builds a snapshot from backend-neutral metadata.
+    ///
+    /// Adapter authors should prefer this constructor so snapshot identity and
+    /// drift checks stay decoupled from `std::fs::Metadata`.
+    pub fn from_backend_metadata(metadata: &crate::backend::BackendMetadata) -> Self {
         Self {
-            len: metadata.len(),
-            modified_unix_millis: metadata
-                .modified()
-                .ok()
-                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-                .map(|duration| duration.as_millis() as i64),
-            readonly,
-            permissions_display,
-            #[cfg(unix)]
-            device_id: Some(metadata.dev()),
-            #[cfg(not(unix))]
-            device_id: None,
-            #[cfg(unix)]
-            inode: Some(metadata.ino()),
-            #[cfg(not(unix))]
-            inode: None,
+            len: metadata.size_bytes,
+            modified_unix_millis: metadata.modified_unix_millis,
+            readonly: metadata.readonly,
+            permissions_display: metadata.permissions_display.clone(),
+            stable_token: metadata.stable_token.clone(),
+            device_id: metadata.device_id,
+            inode: metadata.inode,
         }
+    }
+
+    #[deprecated(
+        since = "0.1.10",
+        note = "prefer FileSnapshot::from_backend_metadata(...) so snapshot creation stays backend-neutral"
+    )]
+    pub fn from_metadata(metadata: &std::fs::Metadata) -> Self {
+        Self::from_backend_metadata(&crate::backend::backend_metadata_from_std(metadata))
     }
 
     pub fn to_path_metadata(&self) -> rdump_contracts::PathMetadata {
@@ -734,7 +738,11 @@ fn ranges_to_matches(content: &str, ranges: &[TsRange]) -> Vec<Match> {
 
 pub(crate) fn materialize_raw_search_item(raw: Result<RawSearchItem>) -> Result<SearchResult> {
     let raw = raw?;
-    let loaded = match crate::content::load_search_content(&raw.resolved_path) {
+    let loaded = match crate::content::load_search_content_with_backend(
+        raw.backend.as_ref(),
+        &raw.resolved_path,
+        &raw.display_path,
+    ) {
         Ok(c) => c,
         Err(e) => {
             let snapshot_drift = raw.snapshot.is_some();
@@ -767,8 +775,8 @@ pub(crate) fn materialize_raw_search_item(raw: Result<RawSearchItem>) -> Result<
     diagnostics.extend(loaded.diagnostics);
     let mut snapshot_drift = false;
     if let Some(snapshot) = &raw.snapshot {
-        if let Ok(metadata) = std::fs::metadata(&raw.resolved_path) {
-            let current_snapshot = FileSnapshot::from_metadata(&metadata);
+        if let Ok(metadata) = raw.backend.stat(&raw.resolved_path) {
+            let current_snapshot = FileSnapshot::from_backend_metadata(&metadata);
             if current_snapshot != *snapshot {
                 snapshot_drift = true;
                 diagnostics.push(SearchDiagnostic::snapshot_drift(
@@ -846,6 +854,7 @@ enum SearchResultIteratorInner {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RawSearchItem {
+    pub backend: Arc<dyn crate::backend::SearchBackend>,
     pub display_path: PathBuf,
     pub resolved_path: PathBuf,
     pub root_relative_path: Option<PathBuf>,
@@ -958,6 +967,7 @@ fn result_fingerprint(
         snapshot.modified_unix_millis.hash(&mut hasher);
         snapshot.readonly.hash(&mut hasher);
         snapshot.permissions_display.hash(&mut hasher);
+        snapshot.stable_token.hash(&mut hasher);
         snapshot.device_id.hash(&mut hasher);
         snapshot.inode.hash(&mut hasher);
     }
@@ -1120,9 +1130,7 @@ impl std::iter::FusedIterator for SearchPathIterator {}
 /// # Ok::<(), anyhow::Error>(())
 /// ```
 pub fn search_iter(query: &str, options: SearchOptions) -> Result<SearchResultIterator> {
-    Ok(SearchResultIterator::from_raw_iter(engine::search_raw_iter(
-        query, &options, None,
-    )?))
+    SearchRuntime::real_fs().search_iter(query, &options)
 }
 
 /// Run an rdump query and collect all results into memory.
@@ -1165,40 +1173,17 @@ pub fn search_iter(query: &str, options: SearchOptions) -> Result<SearchResultIt
 /// # Ok::<(), anyhow::Error>(())
 /// ```
 pub fn search(query: &str, options: SearchOptions) -> Result<Vec<SearchResult>> {
-    Ok(search_with_stats(query, options)?.results)
+    SearchRuntime::real_fs().search(query, &options)
 }
 
 /// Run an rdump query and return results plus engine-level statistics.
 pub fn search_with_stats(query: &str, options: SearchOptions) -> Result<SearchReport> {
-    let mut iter = search_iter(query, options)?;
-    let mut result_diagnostics = Vec::new();
-    let mut results = Vec::with_capacity(iter.remaining());
-    let materialize_started = std::time::Instant::now();
-
-    for result in &mut iter {
-        let result = result?;
-        result_diagnostics.extend(result.diagnostics.iter().cloned());
-        results.push(result);
-    }
-
-    let mut diagnostics = iter.diagnostics().to_vec();
-    diagnostics.extend(result_diagnostics);
-    let mut stats = iter.stats().clone();
-    stats.diagnostics = diagnostics.len();
-    stats.materialize_millis = materialize_started.elapsed().as_millis() as u64;
-
-    Ok(SearchReport {
-        results,
-        stats,
-        diagnostics,
-    })
+    SearchRuntime::real_fs().search_with_stats(query, &options)
 }
 
 /// Run an rdump query and stream only matching paths.
 pub fn search_path_iter(query: &str, options: SearchOptions) -> Result<SearchPathIterator> {
-    Ok(SearchPathIterator::from_raw_iter(engine::search_raw_iter(
-        query, &options, None,
-    )?))
+    SearchRuntime::real_fs().search_path_iter(query, &options)
 }
 
 /// Run an rdump query and collect only matching paths.
@@ -1760,6 +1745,7 @@ mod tests {
 
     fn raw_item(path: PathBuf, ranges: Vec<TsRange>) -> RawSearchItem {
         RawSearchItem {
+            backend: Arc::new(crate::backend::RealFsSearchBackend),
             display_path: path.clone(),
             resolved_path: path,
             root_relative_path: None,
@@ -2358,6 +2344,28 @@ mod tests {
         );
 
         fs::set_permissions(&file, permissions).unwrap();
+    }
+
+    #[test]
+    fn test_file_snapshot_from_backend_metadata_preserves_backend_identity_fields() {
+        let snapshot = FileSnapshot::from_backend_metadata(&crate::backend::BackendMetadata {
+            size_bytes: 42,
+            modified_unix_millis: Some(1234),
+            readonly: true,
+            permissions_display: "r--r--r--".to_string(),
+            file_type: crate::backend::BackendFileType::File,
+            stable_token: Some("token:abc".to_string()),
+            device_id: Some(7),
+            inode: Some(9),
+        });
+
+        assert_eq!(snapshot.len, 42);
+        assert_eq!(snapshot.modified_unix_millis, Some(1234));
+        assert!(snapshot.readonly);
+        assert_eq!(snapshot.permissions_display, "r--r--r--");
+        assert_eq!(snapshot.stable_token.as_deref(), Some("token:abc"));
+        assert_eq!(snapshot.device_id, Some(7));
+        assert_eq!(snapshot.inode, Some(9));
     }
 
     #[test]

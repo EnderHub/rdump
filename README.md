@@ -567,6 +567,33 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
+### Custom Backends and Virtual Workspaces
+
+`rdump` can also run against a caller-supplied backend instead of the default host filesystem runtime:
+
+```rust
+use rdump::{SearchOptions, SearchRuntime};
+use std::sync::Arc;
+
+fn build_runtime() -> SearchRuntime {
+    SearchRuntime::with_backend(Arc::new(rdump::RealFsSearchBackend))
+}
+
+fn run_search() -> anyhow::Result<usize> {
+    let runtime = build_runtime();
+    let report = runtime.search_with_stats(
+        "ext:rs",
+        &SearchOptions {
+            root: ".".into(),
+            ..Default::default()
+        },
+    )?;
+    Ok(report.results.len())
+}
+```
+
+External adapters can implement `SearchBackend` and pass the resulting runtime through `search_*_with_runtime(...)`, `execute_search_request_with_runtime(...)`, or MCP server constructors.
+
 ### Working with Results
 
 ```rust

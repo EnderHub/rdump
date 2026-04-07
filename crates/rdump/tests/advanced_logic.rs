@@ -146,10 +146,7 @@ fn test_empty_contains_predicate_matches_all_files() {
 fn test_empty_name_predicate_fails_gracefully() {
     let root = insane_test_bed();
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("rdump");
-    cmd.arg("search")
-        .arg("--root")
-        .arg(root)
-        .arg("name:''"); // Empty glob pattern
+    cmd.arg("search").arg("--root").arg(root).arg("name:''"); // Empty glob pattern
 
     // An empty glob is invalid, so this should fail with a clear error.
     cmd.assert()

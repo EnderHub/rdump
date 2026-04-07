@@ -1,10 +1,14 @@
 use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tree_sitter::{Parser, Range, Tree};
 
-use crate::content::{load_search_content, ContentState, LoadedContent, SearchDiagnostic};
+use crate::backend::{BackendMetadata, RealFsSearchBackend, SearchBackend};
+use crate::content::{
+    load_search_content_with_backend, ContentState, LoadedContent, SearchDiagnostic,
+};
 use crate::parser::{AstNode, LogicalOperator, PredicateKey};
 use crate::predicates::PredicateEvaluator;
 use crate::SemanticSkipReason;
@@ -23,6 +27,9 @@ pub enum MatchResult {
 pub struct FileContext {
     pub path: PathBuf,
     pub root: PathBuf,
+    pub display_path: PathBuf,
+    backend: Arc<dyn SearchBackend>,
+    metadata: Option<BackendMetadata>,
     content: Option<LoadedContent>,
     // Cache for the parsed tree-sitter AST
     tree: Option<Tree>,
@@ -36,11 +43,25 @@ pub struct FileContext {
 
 impl FileContext {
     pub fn new(path: PathBuf, root: PathBuf) -> Self {
-        let canonical_root = dunce::canonicalize(&root).unwrap_or(root);
-        let canonical_path = dunce::canonicalize(&path).unwrap_or(path);
+        Self::with_backend(path, root, Arc::new(RealFsSearchBackend))
+    }
+
+    pub fn with_backend(path: PathBuf, root: PathBuf, backend: Arc<dyn SearchBackend>) -> Self {
+        let canonical_root = backend.normalize_root(&root).unwrap_or(root.clone());
+        let identity = backend
+            .normalize_path(&canonical_root, &root, &path)
+            .unwrap_or(crate::backend::BackendPathIdentity {
+                display_path: path.clone(),
+                resolved_path: path.clone(),
+                root_relative_path: None,
+                resolution: crate::PathResolution::Fallback,
+            });
         FileContext {
-            path: canonical_path,
+            display_path: identity.display_path,
+            path: identity.resolved_path,
             root: canonical_root,
+            backend,
+            metadata: None,
             content: None,
             tree: None,
             tree_language_key: None,
@@ -50,30 +71,73 @@ impl FileContext {
         }
     }
 
+    pub fn backend(&self) -> &Arc<dyn SearchBackend> {
+        &self.backend
+    }
+
+    pub fn resolved_path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn root_path(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn root_relative_path(&self) -> Option<&Path> {
+        self.path.strip_prefix(&self.root).ok()
+    }
+
+    pub fn metadata(&mut self) -> Result<&BackendMetadata> {
+        if self.metadata.is_none() {
+            self.metadata = Some(self.backend.stat(&self.path)?);
+        }
+        Ok(self.metadata.as_ref().unwrap())
+    }
+
+    pub fn normalized_path(&self, path: &Path) -> Result<crate::backend::BackendPathIdentity> {
+        self.backend.normalize_path(&self.root, &self.root, path)
+    }
+
     pub fn get_content(&mut self) -> Result<&str> {
         if self.content.is_none() {
-            self.content = Some(load_search_content(&self.path)?);
+            self.content = Some(load_search_content_with_backend(
+                self.backend.as_ref(),
+                &self.path,
+                &self.display_path,
+            )?);
         }
         Ok(self.content.as_ref().unwrap().content.as_ref())
     }
 
     pub fn get_content_arc(&mut self) -> Result<Arc<str>> {
         if self.content.is_none() {
-            self.content = Some(load_search_content(&self.path)?);
+            self.content = Some(load_search_content_with_backend(
+                self.backend.as_ref(),
+                &self.path,
+                &self.display_path,
+            )?);
         }
         Ok(self.content.as_ref().unwrap().content.clone())
     }
 
     pub fn content_state(&mut self) -> Result<ContentState> {
         if self.content.is_none() {
-            self.content = Some(load_search_content(&self.path)?);
+            self.content = Some(load_search_content_with_backend(
+                self.backend.as_ref(),
+                &self.path,
+                &self.display_path,
+            )?);
         }
         Ok(self.content.as_ref().unwrap().state.clone())
     }
 
     pub fn content_diagnostics(&mut self) -> Result<Vec<SearchDiagnostic>> {
         if self.content.is_none() {
-            self.content = Some(load_search_content(&self.path)?);
+            self.content = Some(load_search_content_with_backend(
+                self.backend.as_ref(),
+                &self.path,
+                &self.display_path,
+            )?);
         }
         Ok(self.content.as_ref().unwrap().diagnostics.clone())
     }
@@ -120,8 +184,10 @@ impl FileContext {
 
     pub fn push_semantic_skip(&mut self, reason: SemanticSkipReason, message: impl Into<String>) {
         self.semantic_skip_reasons.push(reason);
-        self.diagnostics
-            .push(SearchDiagnostic::semantic_skip(self.path.clone(), message));
+        self.diagnostics.push(SearchDiagnostic::semantic_skip(
+            self.display_path.clone(),
+            message,
+        ));
     }
 
     pub fn take_diagnostics(&mut self) -> Vec<SearchDiagnostic> {

@@ -2,6 +2,7 @@ use super::{helpers, PredicateEvaluator};
 use crate::evaluator::{FileContext, MatchResult};
 use crate::parser::PredicateKey;
 use anyhow::Result;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(super) struct ModifiedEvaluator;
 impl PredicateEvaluator for ModifiedEvaluator {
@@ -11,8 +12,11 @@ impl PredicateEvaluator for ModifiedEvaluator {
         _key: &PredicateKey,
         value: &str,
     ) -> Result<MatchResult> {
-        let metadata = context.path.metadata()?;
-        let modified_time = metadata.modified()?;
+        let modified_time = context
+            .metadata()?
+            .modified_unix_millis
+            .map(|millis| UNIX_EPOCH + Duration::from_millis(millis as u64))
+            .unwrap_or(SystemTime::UNIX_EPOCH);
         Ok(MatchResult::Boolean(helpers::parse_and_compare_time(
             modified_time,
             value,

@@ -26,4 +26,7 @@
 
 - `search_with_stats` is the easiest SDK entry point when you need results plus engine stats and diagnostics.
 - `search_path_iter` is the path-only SDK surface when a caller does not need file text.
+- `SearchRuntime::with_backend(...)` lets SDK, MCP, or adapter code bind searches to a custom `SearchBackend` instead of the default real filesystem.
+- `execute_search_request_with_runtime(...)` and `repo_language_inventory_with_runtime(...)` are the backend-aware request and planner entry points.
+- `search_async_with_runtime(...)` and `search_async_with_runtime_and_progress(...)` mirror the same runtime seam for Tokio callers.
 - Request/response payloads are versioned by `schema_version`; pin automation to that field rather than prose output.
