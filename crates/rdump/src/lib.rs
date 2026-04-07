@@ -421,7 +421,7 @@ impl FileSnapshot {
     }
 
     #[deprecated(
-        since = "0.1.10",
+        since = "0.1.11",
         note = "prefer FileSnapshot::from_backend_metadata(...) so snapshot creation stays backend-neutral"
     )]
     pub fn from_metadata(metadata: &std::fs::Metadata) -> Self {
